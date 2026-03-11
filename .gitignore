@@ -1,5 +1,5 @@
 # Data (never share)
-data/
+*.RData
 
 # R session files
 .Rhistory
