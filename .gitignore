@@ -1,0 +1,20 @@
+# Data (never share)
+data/
+
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+
+# RStudio files
+.Rproj.user/
+
+# Mac system files
+.DS_Store
+
+# Output files (optional if you don't want reports tracked)
+output/
+
+# Temporary files
+*.log
+*.tmp
