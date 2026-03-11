@@ -1,0 +1,23 @@
+# Ignore raw data
+data/
+
+# Ignore outputs (optional if reproducible)
+output/
+
+# R temporary files
+.Rhistory
+.RData
+.Rproj.user/
+
+# Mac system files
+.DS_Store
+
+# Quarto / Rmarkdown intermediate files
+*_cache/
+*_files/
+
+# LaTeX build files (if knitting to PDF)
+*.aux
+*.log
+*.out
+*.toc
