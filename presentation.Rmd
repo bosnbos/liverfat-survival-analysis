@@ -1,0 +1,297 @@
+---
+title: "Liver Radiodensity and Time to Dose-Limiting Toxicity"
+author: "Bos Noah"
+date: "`r Sys.Date()`"
+output:
+  beamer_presentation:
+    theme: Madrid
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center"
+)
+```
+
+```{r packages, include=FALSE}
+library(ipred)
+library(TH.data)
+library(survival)
+library(survminer)
+library(hrbrthemes)
+library(knitr)
+library(forestmodel)
+library(broom)
+library(mice)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r data-load}
+load("data/Dataset_liverfat.RData")
+df <- dataset_leiden
+```
+
+# Study Objective
+
+## Research Question
+
+Goal: investigate whether **liver radiodensity (HU)** is associated with  
+**time to dose-limiting toxicity (DLT)** during chemotherapy.
+
+Secondary objective: evaluate whether **hospital-level variation** affects this relationship.
+
+Method: **time-to-event analysis using Cox proportional hazards models.**
+
+---
+
+# Study Endpoints
+
+Three toxicity endpoints:
+
+- CAP toxicity
+- OXA toxicity
+- CAPOX toxicity
+
+Not all patients received both drugs → **different risk sets**.
+
+Time variable: **number of chemotherapy cycles until DLT**
+
+- `0` = toxicity during the first cycle.
+
+---
+
+# Descriptive Statistics
+
+## Overall Event Rates
+
+```{r}
+endpoint_summary <- tibble(
+  Endpoint = c("CAP", "OXA", "CAPOX"),
+  Event_var = c("TIMT_CAP2", "TIMT_OXA2", "TIMT_CAPOX2")
+) %>%
+  rowwise() %>%
+  mutate(
+    N = sum(!is.na(df[[Event_var]])),
+    Events = sum(df[[Event_var]] == 1, na.rm = TRUE),
+    Censored = sum(df[[Event_var]] == 0, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  select(Endpoint, N, Events, Censored)
+
+kable(endpoint_summary)
+```
+
+Event rates differ across endpoints.
+
+---
+
+# Hospital Distribution
+
+## Patients per Hospital
+
+```{r}
+hospital_distribution <- df %>%
+  filter(!is.na(TIMT_CAP2)) %>%
+  group_by(hospital) %>%
+  summarise(
+    N = n(),
+    Events = sum(TIMT_CAP2 == 1),
+    Event_pct = round(100 * Events / N, 1),
+    Censored = sum(TIMT_CAP2 == 0)
+  ) %>%
+  arrange(desc(N))
+
+kable(hospital_distribution)
+```
+
+Hospitals range roughly **10–70 patients** with varying event rates.
+
+---
+
+# Liver Radiodensity
+
+## HU Distribution Across Hospitals
+
+```{r fig.width=8, fig.height=5}
+ggplot(df, aes(x = hospital, y = liverHU_manual)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of Liver Radiodensity by Hospital",
+    x = "Hospital",
+    y = "Liver HU"
+  ) +
+  theme_minimal()
+```
+
+Visual inspection suggests differences between hospitals.
+
+---
+
+# ANOVA Test
+
+```{r}
+hospital_anova <- anova(lm(liverHU_manual ~ hospital, data = df))
+kable(hospital_anova)
+```
+
+Interpretation:
+
+Significant differences in liver HU across hospitals.
+
+---
+
+# Modeling Implication
+
+Both
+
+- **Liver HU**
+- **DLT rates**
+
+vary by hospital → potential **confounding**.
+
+Solution:
+
+Use **stratified Cox proportional hazards models**
+
+This allows:
+
+- hospital-specific baseline hazards
+- common liver HU effect.
+
+---
+
+# Survival Dataset Construction
+
+Each endpoint uses a **separate survival dataset**.
+
+Definitions:
+
+- `event = 1` → DLT occurred
+- `event = 0` → censored
+- `time` → cycles until DLT
+
+---
+
+# Endpoint Dataset Function
+
+```{r}
+make_endpoint <- function(data, endpoint = c("CAP", "OXA", "CAPOX")) {
+
+  endpoint <- match.arg(endpoint)
+
+  if (endpoint == "CAP") {
+    event_var <- "TIMT_CAP2"
+    time_var  <- "cycle_till_timt"
+  } else if (endpoint == "OXA") {
+    event_var <- "TIMT_OXA2"
+    time_var  <- "cycle_till_timtOXA"
+  } else {
+    event_var <- "TIMT_CAPOX2"
+    time_var  <- "cycle_till_timtCAPOX"
+  }
+
+  out <- data %>%
+    transmute(
+      participant,
+      hospital,
+      age,
+      sex,
+      liverHU_manual,
+      BBMI,
+      BSMOKER,
+      starting_doseCAP,
+      starting_doseOXA,
+      event = .data[[event_var]],
+      time  = .data[[time_var]]
+    ) %>%
+    filter(!is.na(event), !is.na(time)) %>%
+    mutate(
+      event = as.integer(event == 1),
+      time = as.integer(time)
+    )
+
+  if (endpoint == "CAP") {
+    out <- out %>%
+      mutate(starting_dose = starting_doseCAP) %>%
+      select(-starting_doseCAP, -starting_doseOXA)
+
+  } else if (endpoint == "OXA") {
+    out <- out %>%
+      mutate(starting_dose = starting_doseOXA) %>%
+      select(-starting_doseCAP, -starting_doseOXA)
+
+  } else {
+    out <- out %>%
+      rename(doseCAP = starting_doseCAP,
+             doseOXA = starting_doseOXA)
+  }
+
+  out
+}
+
+cap   <- make_endpoint(df, "CAP")
+oxa   <- make_endpoint(df, "OXA")
+capox <- make_endpoint(df, "CAPOX")
+```
+
+---
+
+# Endpoint Structure
+
+```{r}
+structure_table <- tibble(
+  Dataset = c("CAP", "OXA", "CAPOX"),
+  Time_variable = c("cycle_till_timt",
+                    "cycle_till_timtOXA",
+                    "cycle_till_timtCAPOX"),
+  Event_variable = c("TIMT_CAP2",
+                     "TIMT_OXA2",
+                     "TIMT_CAPOX2"),
+  Dose_variables = c("starting_doseCAP",
+                     "starting_doseOXA",
+                     "starting_doseCAP + starting_doseOXA")
+)
+
+kable(structure_table)
+```
+
+---
+
+# Statistical Analysis Plan
+
+For each endpoint:
+
+Fit **Cox proportional hazards models**
+
+Primary exposure:
+
+- liver radiodensity (per HU increase)
+
+Covariates:
+
+- age
+- sex
+- BMI
+- smoking
+- starting dose
+
+Hospital handled via:
+
+```
+coxph(Surv(time,event) ~ liverHU_manual + covariates + strata(hospital))
+```
+
+---
+
+# Planned Sensitivity Analyses
+
+1. Check **proportional hazards assumption**
+2. **Multiple imputation** for missing covariates
+3. Explore **hospital effect modification**
+
+Goal: robust estimation of the **liver HU effect on DLT risk**.
