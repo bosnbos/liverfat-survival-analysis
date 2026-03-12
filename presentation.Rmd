@@ -117,7 +117,7 @@ Hospitals range roughly **10–70 patients** with varying event rates.
 
 ## HU Distribution Across Hospitals
 
-```{r fig.width=8, fig.height=5}
+```{r fig.width=4, fig.height=2}
 ggplot(df, aes(x = hospital, y = liverHU_manual)) +
   geom_boxplot() +
   labs(
