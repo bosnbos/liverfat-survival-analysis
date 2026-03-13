@@ -25,7 +25,7 @@ library(dplyr)
 ```
 
 ```{r data load}
-load("Dataset_liverfat.RData")
+load("data/Dataset_liverfat.RData")
 df = dataset_leiden
 ```
 
