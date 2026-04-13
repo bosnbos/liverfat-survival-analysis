@@ -14,8 +14,8 @@ knitr::opts_chunk$set(
   echo = FALSE,
   warning = FALSE,
   message = FALSE,
-  fig.width = 6,
-  fig.height = 4
+  fig.width = 10,
+  fig.height = 5
 )
 
 library(survival)
@@ -25,6 +25,8 @@ library(knitr)
 library(broom)
 library(ggplot2)
 library(forestmodel)
+
+
 ```
 
 ```{r}
@@ -243,3 +245,7 @@ kable(as.data.frame(ph_capox$table))
 - Other clinical variables (e.g., age, smoking, dose) show stronger associations  
 
 **Key takeaway:** Liver radiodensity does not appear to add meaningful predictive value beyond standard clinical variables.
+
+# Future study
+
+No clear association was observed when liver radiodensity was modeled continuously across its full range. A possible follow-up analysis would be to assess whether toxicity risk differs only at clinically meaningful thresholds or extreme radiodensity ranges.
