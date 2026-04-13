@@ -13,6 +13,8 @@
 .DS_Store
 
 # Output files (optional if you don't want reports tracked)
+*.pdf
+*.html
 output/
 
 # Temporary files
