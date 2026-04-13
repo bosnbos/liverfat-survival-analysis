@@ -1,7 +1,9 @@
 ---
-title: "Liver Radiodensity and Time to Dose-Limiting Toxicity"
-author: "Bos Noah"
+title: "Does Liver Radiodensity Predict Chemotherapy Toxicity?"
+subtitle: "Time-to-event analysis across CAP, OXA, and CAPOX"
+author: "Noah Bos & Abdullah Alam"
 date: "`r Sys.Date()`"
+
 output:
   beamer_presentation:
     theme: "Madrid"
@@ -30,23 +32,23 @@ load("data/Dataset_liverfat.RData")
 df = dataset_leiden
 ```
 
-# Objective
+# Study Objective
 
-- Evaluate association between liver HU and toxicity
-- Time-to-event: cycles until dose-limiting toxicity
-- Adjust for clinical factors and hospital
+- Assess whether liver radiodensity (HU) predicts time to dose-limiting toxicity  
+- Outcome: number of cycles until toxicity occurs  
+- Adjusted for patient characteristics and hospital differences  
 
-**Conclusion:** Study assesses predictive value of liver radiodensity.
+**Key takeaway:** Liver HU is evaluated for its added predictive value in clinical decision-making.
 
-# Endpoints
+# Toxicity Endpoints Analyzed Separately
 
-- CAP toxicity
-- OXA toxicity
-- CAPOX toxicity
+- CAP toxicity  
+- OXA toxicity  
+- CAPOX toxicity  
 
-**Conclusion:** Three independent survival analyses performed.
+**Key takeaway:** Each treatment is evaluated using a separate time-to-event model.
 
-# Event rates
+# Observed Toxicity Rates Differ by Treatment
 
 ```{r}
 endpoint_summary <- tibble(
@@ -65,15 +67,17 @@ endpoint_summary <- tibble(
 kable(endpoint_summary)
 ```
 
-**Conclusion:** Toxicity frequency differs across treatments.
+**Key takeaway:** Event rates differ across treatments, with sufficient events to support survival analysis.
 
-# Liver HU by hospital
+# Liver Radiodensity Varies Across Hospitals
 
 ```{r}
 ggplot(df, aes(hospital, liverHU_manual)) +
   geom_boxplot() +
   theme_minimal()
 ```
+
+**Key takeaway:** Liver HU distributions differ between hospitals, suggesting baseline differences that are accounted for through stratification.
 
 
 ```{r}
@@ -121,7 +125,7 @@ capox <- make_endpoint(df,"CAPOX")
 ```
 
 
-# Kaplan-Meier CAP
+# Time to Toxicity: CAP
 
 ```{r}
 ggsurvplot(
@@ -129,9 +133,10 @@ survfit(Surv(time,event)~1,data=cap),
 risk.table=T
 )
 ```
+**Key takeaway:** The probability of remaining toxicity-free declines over cycles, with most events occurring early in treatment.
 
 
-# Kaplan-Meier OXA
+# Time to Toxicity: OXA
 
 ```{r}
 ggsurvplot(
@@ -139,9 +144,10 @@ survfit(Surv(time,event)~1,data=oxa),
 risk.table=T
 )
 ```
-The probability of remaining toxicity-free decreases steadily. However, estimates after 10–12 cycles are unstable due to very few patients remaining at risk.
+**Key takeaway:** Toxicity risk is highest in early cycles. Estimates in later cycles are less reliable due to few patients remaining at risk.
 
-# Kaplan-Meier CAPOX
+
+# Time to Toxicity: CAPOX
 
 ```{r}
 ggsurvplot(
@@ -149,9 +155,9 @@ survfit(Surv(time,event)~1,data=capox),
 risk.table=T
 )
 ```
-CAPOX shows a similar pattern, with most toxicities occurring during early treatment cycles. Late-cycle estimates are based on very small numbers and should be interpreted cautiously.
+**Key takeaway:** A similar pattern is observed, with most toxicities occurring early and increasing uncertainty in later cycles.
 
-# Cox models
+# Why Use Cox Models?
 
 ```{r}
 cox_cap <- coxph(
@@ -170,24 +176,15 @@ BSMOKER+strata(hospital),
 data=capox)
 ```
 
-**Conclusion KM Curves**
+- Kaplan-Meier curves describe when toxicity occurs  
+- They do not quantify effects of predictors  
 
-Across all treatments, most dose-limiting toxicities occur during early chemotherapy cycles, with decreasing numbers of patients at risk in later cycles leading to increased uncertainty.
+- Cox models estimate the association between liver HU and toxicity  
+- Stratified by hospital to allow different baseline risks  
 
-Few patients remain under observation at later cycles, leading to wider uncertainty.
+**Key takeaway:** Cox models quantify whether liver radiodensity predicts toxicity after adjustment.
 
-This justifies survival analysis
-
-**Next step**
-
-Multivariable Cox models fitted for all three endpoints.
-
-Hospital stratification allows baseline toxicity risk to differ between centers without estimating separate coefficients.
-
-- each hospital has its own baseline hazard
-- but same covariate effects
-
-# Hazard ratio table
+# Association Between Liver HU and Toxicity
 
 ```{r }
 hr_table <- bind_rows(
@@ -200,48 +197,49 @@ kable(hr_table, digits = 2) %>%
   kableExtra::kable_styling(font_size = 7)
 ```
 
-**Conclusion:** Liver HU effect close to null across endpoints.
+**Key takeaway:** Hazard ratios for liver HU are close to 1 across all endpoints, with no statistically significant associations observed.
 
-# Forest plot CAP
+# CAP: No Meaningful Association with Liver HU
 
 ```{r}
 forest_model(cox_cap)
 ```
 
-**Conclusion:** CAP model shows small liver HU effect.
+**Key takeaway:** The estimated effect of liver HU is close to null with no statistically significant association.
 
-# Forest plot OXA
+# OXA: Small Trend, Not Statistically significant
 
 ```{r}
 forest_model(cox_oxa)
 ```
 
-**Conclusion:** OXA model confirms weak association.
+**Key takeaway:** A slight association is observed, but the effect size is small and not significant
 
-# Forest plot CAPOX
+
+# CAPOX: No Consistent Association Observed
 
 ```{r}
 forest_model(cox_capox)
 ```
 
-**Conclusion:** CAPOX model also shows minimal effect.
+**Key takeaway:** Estimates are close to null, with no clear evidence of an association.
 
-# PH assumption
+# Model Assumptions Hold
 
-The proportional hazards assumption was evaluated using Schoenfeld residual tests. Non-significant results indicate no strong evidence that hazard ratios change over time. This supports the validity of the Cox model estimates.
+- No evidence of violation of the proportional hazards assumption  
+- Hazard ratios appear stable over time  
 
 ```{r}
 ph_capox <- cox.zph(cox_capox)
 kable(as.data.frame(ph_capox$table))
 ```
 
-**Conclusion:** No major PH violations.
+**Key takeaway:** The Cox model assumptions are satisfied, supporting the validity of the results.
 
-# Overall conclusion
+# Overall Interpretation
 
-- Liver radiodensity weakly associated with toxicity
-- Effects small across all endpoints
-- Dose and clinical variables stronger predictors
-- Hospital differences accounted for
+- Liver radiodensity shows no consistent or clinically meaningful association with time to toxicity  
+- Effect sizes are small and not statistically significant across endpoints  
+- Other clinical variables (e.g., age, smoking, dose) show stronger associations  
 
-**Final conclusion:** Liver radiodensity is not a strong predictor of chemotherapy toxicity.
+**Key takeaway:** Liver radiodensity does not appear to add meaningful predictive value beyond standard clinical variables.
