@@ -244,7 +244,7 @@ kable(as.data.frame(ph_capox$table))
 - Effect sizes are small and not statistically significant across endpoints  
 - Other clinical variables (e.g., age, smoking, dose) show stronger associations  
 
-**Key takeaway:** Liver radiodensity does not appear to add meaningful predictive value beyond standard clinical variables.
+**Key takeaway:** Liver radiodensity does not appear to add meaningful predictive value beyond standard clinical variables even after accounting for hospital effects
 
 # Future study
 
