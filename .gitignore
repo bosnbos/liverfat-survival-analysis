@@ -13,7 +13,7 @@
 .DS_Store
 
 # Output files (optional if you don't want reports tracked)
-#output/
+output/
 
 # Temporary files
 *.log
