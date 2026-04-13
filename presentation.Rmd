@@ -15,6 +15,12 @@ knitr::opts_chunk$set(
   message = FALSE,
   fig.align = "center"
 )
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.height = 4,
+  out.width = "90%"
+)
 ```
 
 ```{r packages, include=FALSE}
@@ -260,36 +266,136 @@ kable(structure_table)
 
 ---
 
-# Statistical Analysis Plan
+# 7. Kaplan–Meier Curves
 
-For each endpoint:
+Kaplan–Meier curves were constructed to visualise the overall time-to-toxicity distribution.
 
-Fit **Cox proportional hazards models**
+```{r}
+km_cap <- survfit(Surv(time, event) ~ 1, data = cap)
+km_oxa <- survfit(Surv(time, event) ~ 1, data = oxa)
+km_capox <- survfit(Surv(time, event) ~ 1, data = capox)
 
-Primary exposure:
-
-- liver radiodensity (per HU increase)
-
-Covariates:
-
-- age
-- sex
-- BMI
-- smoking
-- starting dose
-
-Hospital handled via:
+ggsurvplot(km_cap, risk.table = TRUE, title = "CAP toxicity")
+ggsurvplot(km_oxa, risk.table = TRUE, title = "OXA toxicity")
+ggsurvplot(km_capox, risk.table = TRUE, title = "CAPOX toxicity")
 
 ```
-strata(hospital))
+# 8. Cox proportional hazards models
+
+
+Multivariable Cox proportional hazards models were fitted for each endpoint, adjusting for:
+	•	Liver radiodensity (HU)
+	•	Age
+	•	Sex
+	•	BMI
+	•	Smoking
+	•	Starting dose
+	•	Hospital (stratified baseline hazards)
+
+```{r}
+cox_cap <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + starting_dose + strata(hospital),
+  data = cap
+)
+
+cox_oxa <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + starting_dose + strata(hospital),
+  data = oxa
+)
+
+cox_capox <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + doseCAP + doseOXA + strata(hospital),
+  data = capox
+)
+
+summary(cox_cap)
+summary(cox_oxa)
+summary(cox_capox)
 ```
 
----
+# 9. Hazard ratio table
 
-# Planned Sensitivity Analyses
+```{r}
+hr_table <- bind_rows(
+  tidy(cox_cap, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Model="CAP"),
+  tidy(cox_oxa, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Model="OXA"),
+  tidy(cox_capox, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Model="CAPOX")
+)
 
-1. Check **proportional hazards assumption**
-2. **Multiple imputation** for missing covariates
-3. Explore **hospital effect modification**
+kable(hr_table, digits = 3)
+```
 
-Goal: robust estimation of the **liver HU effect on DLT risk**.
+# 10. Interpretation per 10 HU
+To improve clinical interpretability, hazard ratios were converted to a 10 HU difference.
+
+```{r}
+hr_10HU <- hr_table %>%
+  filter(term == "liverHU_manual") %>%
+  mutate(
+    HR_10HU = estimate^10,
+    conf.low_10HU = conf.low^10,
+    conf.high_10HU = conf.high^10
+  )
+
+kable(hr_10HU)
+```
+Even for a 10 HU difference, the effect size remained small, suggesting limited clinical relevance.
+
+# 11. forest plots
+```{r}
+forest_model(cox_cap)
+forest_model(cox_oxa)
+forest_model(cox_capox)
+```
+Forest plots illustrate that liver HU has a smaller effect compared to clinical covariates such as dose.
+
+# 12. Proportional Hazards assumption
+
+```{r}
+ph_cap <- cox.zph(cox_cap)
+ph_oxa <- cox.zph(cox_oxa)
+ph_capox <- cox.zph(cox_capox)
+
+kable(as.data.frame(ph_cap$table))
+kable(as.data.frame(ph_oxa$table))
+kable(as.data.frame(ph_capox$table))
+```
+
+```{r}
+plot(ph_cap)
+plot(ph_oxa)
+plot(ph_capox)
+```
+No major violations of the proportional hazards assumption were observed.
+
+# 13. Adjusted survival curves
+
+Adjusted survival curves were constructed to visualise the effect of liver radiodensity while holding covariates constant.
+```{r}
+cap$liver_group <- ifelse(cap$liverHU_manual < median(cap$liverHU_manual), "Low HU", "High HU")
+
+fit_adj <- survfit(
+  coxph(
+    Surv(time, event) ~ liver_group + age + sex + BBMI +
+      BSMOKER + starting_dose + strata(hospital),
+    data = cap
+  )
+)
+
+ggsurvplot(fit_adj, data = cap, risk.table = TRUE)
+```
+
+# 14. Summary of findings
+- Liver radiodensity showed only a weak association with toxicity risk
+- Hazard ratios were close to 1 across all endpoints
+- Even a 10 HU difference resulted in minimal change in risk
+- Starting dose and clinical variables had larger effects
+- Hospital differences were accounted for using stratification
+
+# 15. conclusion
+
+Liver radiodensity is not a strong independent predictor of dose-limiting chemotherapy toxicity.
+Clinical factors and treatment dose appear more important determinants of toxicity risk.
