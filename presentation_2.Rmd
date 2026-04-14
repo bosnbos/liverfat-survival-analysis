@@ -126,7 +126,6 @@ oxa <- make_endpoint(df,"OXA")
 capox <- make_endpoint(df,"CAPOX")
 ```
 
-
 # Time to Toxicity: CAP
 
 ```{r}
@@ -159,6 +158,25 @@ risk.table=T
 ```
 **Key takeaway:** A similar pattern is observed, with most toxicities occurring early and increasing uncertainty in later cycles.
 
+# Kaplan-Meijer curves by hospital (capox as example)
+
+```{r}
+fit_hosp <- survfit(Surv(time, event) ~ hospital, data = capox)
+
+ggsurvplot(
+  fit_hosp,
+  data = capox,
+  censor = FALSE,
+  legend.title = "Hospital",
+  legend = "right",
+  ggtheme = theme_minimal(base_size = 16)
+)
+
+```
+
+- toxicity risk varies across hospitals
+- differences likely reflect patient mix and clinical practice
+
 # Why Use Cox Models?
 
 ```{r}
@@ -178,13 +196,18 @@ BSMOKER+strata(hospital),
 data=capox)
 ```
 
-- Kaplan-Meier curves describe when toxicity occurs  
-- They do not quantify effects of predictors  
+- Kaplan-Meijer curves are unadjusted and do not account for hospital differences
 
-- Cox models estimate the association between liver HU and toxicity  
-- Stratified by hospital to allow different baseline risks  
+- Cox models are stratified by hospital  
+- This allows each hospital to have its own baseline hazard  
 
-**Key takeaway:** Cox models quantify whether liver radiodensity predicts toxicity after adjustment.
+**Why this matters:**
+
+- Accounts for differences in patient populations, practices, and measurement  
+- Ensures estimated effects (e.g., liver HU) are not confounded by hospital differences  
+
+**Key takeaway:** Results reflect within-hospital comparisons, not differences between hospitals.
+
 
 # Association Between Liver HU and Toxicity
 
