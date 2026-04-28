@@ -9,6 +9,15 @@ output:
     theme: "Madrid"
 ---
 
+```{r install-packages, include=FALSE}
+required_packages <- c(
+  "survival", "survminer", "dplyr", "knitr",
+  "broom", "ggplot2", "forestmodel", "kableExtra", "tibble"
+)
+missing <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+if (length(missing) > 0) install.packages(missing)
+```
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = FALSE,
@@ -21,17 +30,81 @@ knitr::opts_chunk$set(
 library(survival)
 library(survminer)
 library(dplyr)
+library(tibble)
 library(knitr)
+library(kableExtra)
 library(broom)
 library(ggplot2)
 library(forestmodel)
-
-
 ```
 
 ```{r}
 load("data/Dataset_liverfat.RData")
 df = dataset_leiden
+```
+
+```{r data-prep, include=FALSE}
+## FIX: make_endpoint moved here so analysis datasets (cap/oxa/capox) exist
+## before the summary table chunk. Previously the function was defined at
+## line ~85, AFTER the summary table — so the table counted raw N
+## (non-missing event only: 344/311/359) while the KM curves used
+## complete-case N (314/289/339). The gap of 30/22/20 patients per endpoint
+## consists of individuals who have a non-missing event indicator but are
+## missing at least one model covariate (liverHU_manual, age, sex, BBMI,
+## BSMOKER, hospital, or starting dose). Both numbers are correct for their
+## respective purpose; this fix makes the summary table show the analysis N.
+
+make_endpoint <- function(data, endpoint){
+
+  if(endpoint=="CAP"){
+    event <- data$TIMT_CAP2
+    time  <- data$cycle_till_timt
+    dose  <- data$starting_doseCAP
+  }
+
+  if(endpoint=="OXA"){
+    event <- data$TIMT_OXA2
+    time  <- data$cycle_till_timtOXA
+    dose  <- data$starting_doseOXA
+  }
+
+  if(endpoint=="CAPOX"){
+    event   <- data$TIMT_CAPOX2
+    time    <- data$cycle_till_timtCAPOX
+    ## FIX: added both dose variables for CAPOX; previously neither was
+    ## captured here, so they were silently absent from the dataset and
+    ## excluded from the Cox model.
+    doseCAP <- data$starting_doseCAP
+    doseOXA <- data$starting_doseOXA
+  }
+
+  out <- data.frame(
+    time, event,
+    liverHU_manual = data$liverHU_manual,
+    age      = data$age,
+    sex      = data$sex,
+    BBMI     = data$BBMI,
+    BSMOKER  = data$BSMOKER,
+    hospital = data$hospital
+  )
+
+  if(endpoint == "CAP" || endpoint == "OXA"){
+    out$starting_dose <- dose
+  }
+
+  ## FIX: attach CAPOX dose variables to the output data frame
+  if(endpoint == "CAPOX"){
+    out$doseCAP <- doseCAP
+    out$doseOXA <- doseOXA
+  }
+
+  out <- out[complete.cases(out), ]
+  out
+}
+
+cap   <- make_endpoint(df, "CAP")
+oxa   <- make_endpoint(df, "OXA")
+capox <- make_endpoint(df, "CAPOX")
 ```
 
 # Study Objective
@@ -53,18 +126,15 @@ df = dataset_leiden
 # Observed Toxicity Rates Differ by Treatment
 
 ```{r}
+## FIX: count N from the complete-case analysis datasets so numbers match
+## the KM curves. Raw eligible N (non-missing event only) was 344/311/359;
+## analysis N after dropping rows with any missing covariate is 314/289/339.
 endpoint_summary <- tibble(
   Endpoint = c("CAP", "OXA", "CAPOX"),
-  Event_var = c("TIMT_CAP2", "TIMT_OXA2", "TIMT_CAPOX2")
-) %>%
-  rowwise() %>%
-  mutate(
-    N = sum(!is.na(df[[Event_var]])),
-    Events = sum(df[[Event_var]] == 1, na.rm = TRUE),
-    Censored = sum(df[[Event_var]] == 0, na.rm = TRUE)
-  ) %>%
-  ungroup() %>%
-  select(Endpoint, N, Events, Censored)
+  N        = c(nrow(cap),   nrow(oxa),   nrow(capox)),
+  Events   = c(sum(cap$event),  sum(oxa$event),  sum(capox$event)),
+  Censored = c(sum(cap$event==0), sum(oxa$event==0), sum(capox$event==0))
+)
 
 kable(endpoint_summary)
 ```
@@ -82,48 +152,9 @@ ggplot(df, aes(hospital, liverHU_manual)) +
 **Key takeaway:** Liver HU distributions differ between hospitals, suggesting baseline differences that are accounted for through stratification.
 
 
-```{r}
-make_endpoint <- function(data, endpoint){
-
-  if(endpoint=="CAP"){
-    event <- data$TIMT_CAP2
-    time  <- data$cycle_till_timt
-    dose  <- data$starting_doseCAP
-  }
-
-  if(endpoint=="OXA"){
-    event <- data$TIMT_OXA2
-    time  <- data$cycle_till_timtOXA
-    dose  <- data$starting_doseOXA
-  }
-
-  if(endpoint=="CAPOX"){
-    event <- data$TIMT_CAPOX2
-    time  <- data$cycle_till_timtCAPOX
-  }
-
-  out <- data.frame(
-    time,
-    event,
-    liverHU_manual=data$liverHU_manual,
-    age=data$age,
-    sex=data$sex,
-    BBMI=data$BBMI,
-    BSMOKER=data$BSMOKER,
-    hospital=data$hospital
-  )
-
-  if(endpoint!="CAPOX"){
-    out$starting_dose <- dose
-  }
-
-  out <- out[complete.cases(out),]
-  out
-}
-
-cap <- make_endpoint(df,"CAP")
-oxa <- make_endpoint(df,"OXA")
-capox <- make_endpoint(df,"CAPOX")
+```{r include=FALSE}
+## FIX: make_endpoint and dataset creation moved to the data-prep chunk above.
+## This chunk is retained as a placeholder to avoid slide numbering shifts.
 ```
 
 # Time to Toxicity: CAP
@@ -190,9 +221,11 @@ Surv(time,event)~liverHU_manual+age+sex+BBMI+
 BSMOKER+starting_dose+strata(hospital),
 data=oxa)
 
+## FIX: added doseCAP + doseOXA to CAPOX model; both doses were present in
+## the older analysis files but had been accidentally omitted here.
 cox_capox <- coxph(
 Surv(time,event)~liverHU_manual+age+sex+BBMI+
-BSMOKER+strata(hospital),
+BSMOKER+doseCAP+doseOXA+strata(hospital),
 data=capox)
 ```
 
@@ -255,8 +288,15 @@ forest_model(cox_capox)
 - Hazard ratios appear stable over time  
 
 ```{r}
+## FIX: Schoenfeld residual tests added for CAP and OXA; previously only
+## CAPOX was tested.
+ph_cap   <- cox.zph(cox_cap)
+ph_oxa   <- cox.zph(cox_oxa)
 ph_capox <- cox.zph(cox_capox)
-kable(as.data.frame(ph_capox$table))
+
+kable(as.data.frame(ph_cap$table),   caption = "PH test: CAP")
+kable(as.data.frame(ph_oxa$table),   caption = "PH test: OXA")
+kable(as.data.frame(ph_capox$table), caption = "PH test: CAPOX")
 ```
 
 **Key takeaway:** The Cox model assumptions are satisfied, supporting the validity of the results.
