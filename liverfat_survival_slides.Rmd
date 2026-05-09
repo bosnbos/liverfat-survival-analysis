@@ -4,7 +4,7 @@ subtitle: "Survival Analysis in a Dutch Multi-centre Cohort"
 author: "Noah Bos & Abdullah Alam"
 institute: "COLON Study · Wageningen University Research"
 date: "`r Sys.Date()`"
-knit: (function(input, ...) rmarkdown::render(input, output_dir = "reports", output_file = "liverfat_survival_slides_v2.pdf"))
+knit: (function(input, ...) rmarkdown::render(input, output_dir = "reports", output_file = "liverfat_survival_slides.pdf"))
 classoption: "aspectratio=169"
 output:
   beamer_presentation:
