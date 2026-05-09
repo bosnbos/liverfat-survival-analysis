@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
 # Render an Rmd from the command line, honoring its YAML `knit:` hook.
-# Usage:  Rscript render.R paper.Rmd
+# Usage (from project root):  Rscript scripts/render.R paper.Rmd
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) == 0) stop("Usage: Rscript render.R <file.Rmd>")
+if (length(args) == 0) stop("Usage: Rscript scripts/render.R <file.Rmd>")
 input <- args[1]
 
 fm <- rmarkdown::yaml_front_matter(input)

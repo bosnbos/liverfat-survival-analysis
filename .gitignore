@@ -12,9 +12,11 @@
 # Mac system files
 .DS_Store
 
-# Output files (optional if you don't want reports tracked)
+# Output files (rendered reports kept in reports/, but ignore stray PDFs/HTML elsewhere)
 *.pdf
 *.html
+!reports/paper.pdf
+!reports/slides.pdf
 output/
 
 # Temporary files

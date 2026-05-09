@@ -1,67 +1,47 @@
-# Liver Fat and Chemotherapy Toxicity
+# Liver Radiodensity and Chemotherapy-Induced Toxicity
 
-Survival analysis of the association between liver radiodensity (Hounsfield Units, measured on diagnostic CT) and time to dose-limiting toxicity in colon-cancer patients receiving capecitabine (CAP), oxaliplatin (OXA), or both (CAPOX). Data from the Dutch multi-centre COLON cohort. Hospital-level heterogeneity is addressed via stratified Cox proportional-hazards models.
+Statistical analysis of the association between liver radiodensity (Hounsfield Units measured on diagnostic CT) and time to dose-limiting chemotherapy toxicity in patients with stage II/III colon cancer. Data are from the Dutch COLON cohort, a prospective observational study covering eleven hospitals. Three toxicity endpoints (capecitabine, oxaliplatin, and the combined CAPOX regimen) are analysed separately using stratified Cox proportional hazards regression, with hospital as the stratification factor.
 
-## Structure
+The headline result is that hospital-level variation in measured liver radiodensity, likely reflecting differences in CT scanner calibration across centres, masks the within-hospital association in a pooled analysis. Once hospital is accounted for through stratification, a small within-hospital association is observed for the CAPOX endpoint (HR = 1.10 per 10 HU; 95% CI 1.00–1.21; p = 0.044). The same association is not detected without stratification.
 
-```
-R/main_analysis.R   – CANONICAL analysis (data prep + Cox fits + PH tests)
-analysis.Rmd        – analyst's notebook (raw output, sensitivities, feedback log)
-paper.Rmd           – formal PDF paper (xelatex)
-slides.Rmd          – Beamer presentation (metropolis, 16:9)
-data/               – dataset (not committed)
-docs/               – study documentation, codebook, feedback
-reports/            – knitted output PDFs
-archive/            – superseded Rmd versions
-```
+Authors: Noah Bos and Abdullah Alam. Statistical consulting project at Wageningen University & Research, in collaboration with the COLON cohort study (Leiden University Medical Center).
 
-## How the pieces fit together
+## Outputs
 
-`R/main_analysis.R` is the single source of truth for the canonical models. The three Rmds all `source()` it from their setup chunks, so there is no duplicated data prep or model fitting:
+The rendered reports are committed under `reports/`:
+
+- `reports/paper.pdf` — written report.
+- `reports/slides.pdf` — presentation.
+
+## Repository structure
 
 ```
-        R/main_analysis.R   ← edit here to change the analysis
-               │
-   ┌───────────┼───────────┐
-   ▼           ▼           ▼
-analysis.Rmd  paper.Rmd  slides.Rmd
-(notebook)    (PDF)      (Beamer)
+R/main_analysis.R    canonical analysis: data preparation, Cox models, PH diagnostics
+analysis.Rmd         analyst notebook with raw model output, sensitivity analyses,
+                     and a feedback / decision log
+paper.Rmd            source for the written report
+slides.Rmd           source for the presentation
+data/                dataset directory (data not redistributed; see Data availability)
+docs/                study documentation, codebook, reviewer feedback
+reports/             rendered PDF and HTML outputs
+archive/             superseded report and slide drafts, kept for reference
+scripts/render.R     command-line knitting helper
 ```
 
-**Rule:** keep `R/main_analysis.R` deterministic. Experimental code, alternative specifications, and sensitivity checks belong in `analysis.Rmd` — promote them only after they're decided.
+The three Rmd files all source `R/main_analysis.R` from their setup chunks, so the canonical models are defined in a single place and the report sources contain only narrative, tables, and figures.
 
-## Canonical files
+## Reproducing the analysis
 
-- **`R/main_analysis.R`** — the analysis itself. Edit here.
-- **`analysis.Rmd`** — analyst's notebook: raw model output, sensitivity analyses, feedback responses, decision log. Knits to HTML.
-- **`paper.Rmd`** — written report. Knits to PDF via xelatex.
-- **`slides.Rmd`** — slide deck. Knits to `reports/slides.pdf`.
-
-## Archive
-
-Older iterations are kept in `archive/` for traceability:
-
-- `paper_v1.Rmd` — first paper draft
-- `slides_v1.Rmd` — first slide deck (Madrid theme)
-- `slides_v2.Rmd` — second slide iteration (Madrid, dual-author)
-- `report.Rmd` — abandoned HTML walkthrough variant
-
-## Running the analysis
-
-1. Place `Dataset_liverfat.RData` in `data/`
-2. Open `liverfat_survival_analysis.Rproj` in RStudio
-3. Knit any of: `analysis.Rmd`, `paper.Rmd`, `slides.Rmd`
-
-**RStudio:** click the Knit button — output goes to `reports/`.
-
-**Terminal:** use the `render.R` helper to honour each Rmd's `knit:` hook (raw `rmarkdown::render()` ignores it and dumps in the project root):
+The cohort dataset (`Dataset_liverfat.RData`) is not distributed with this repository; see Data availability below. With the dataset placed in `data/`, the reports can be regenerated by knitting any of the source files in RStudio, or from the command line:
 
 ```sh
-Rscript render.R paper.Rmd       # → reports/paper.pdf
-Rscript render.R slides.Rmd      # → reports/slides.pdf
-Rscript render.R analysis.Rmd    # → reports/analysis.html
+Rscript scripts/render.R paper.Rmd
+Rscript scripts/render.R slides.Rmd
+Rscript scripts/render.R analysis.Rmd
 ```
 
-Each Rmd sources `R/main_analysis.R` automatically — no manual setup needed.
+Output is written to `reports/`. Required R packages are auto-installed by the setup chunks. PDF rendering additionally requires a TeX distribution; we used [TinyTeX](https://yihui.org/tinytex/).
 
-Required packages: `survival`, `survminer`, `dplyr`, `knitr`, `broom`, `ggplot2`, `forestmodel`, `kableExtra`, `tibble`. Missing packages are auto-installed by the Rmd setup chunks.
+## Data availability
+
+The COLON cohort data are held by Wageningen University & Research and are not publicly available due to patient confidentiality. Researchers wishing to reproduce or extend this analysis should contact the COLON study team.
