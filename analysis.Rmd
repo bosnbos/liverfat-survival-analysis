@@ -1,0 +1,152 @@
+---
+title: "Liver Radiodensity & Chemotherapy Toxicity — Analysis Notebook"
+author: "Noah Bos & Abdullah Alam"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    number_sections: true
+    df_print: paged
+    code_folding: show
+---
+
+This is the working analysis notebook. The canonical models are defined once in `R/main_analysis.R` and sourced both here and in the paper / slides. Use this notebook for:
+
+- Inspecting raw model output
+- Sensitivity analyses and alternative specifications
+- Responding to feedback (with dated entries)
+- Documenting decisions that don't make it into the paper
+
+Anything experimental belongs here, **not** in `R/main_analysis.R`. If a sensitivity analysis becomes part of the canonical story, promote it.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width  = 8,
+  fig.height = 4.5
+)
+
+library(survival)
+library(survminer)
+library(dplyr)
+library(tibble)
+library(broom)
+library(ggplot2)
+library(forestmodel)
+library(knitr)
+library(kableExtra)
+```
+
+```{r load-analysis}
+source("R/main_analysis.R")
+```
+
+# Data
+
+## Cohort sizes
+
+```{r}
+tibble(
+  Endpoint = c("CAP", "OXA", "CAPOX"),
+  N        = c(nrow(cap), nrow(oxa), nrow(capox)),
+  Events   = c(sum(cap$event), sum(oxa$event), sum(capox$event)),
+  `Event rate (%)` = round(100 * c(mean(cap$event), mean(oxa$event), mean(capox$event)), 1)
+) %>% kable()
+```
+
+## Hospital coverage
+
+```{r}
+df %>%
+  group_by(hospital) %>%
+  summarise(
+    n_patients = n(),
+    n_cap      = sum(!is.na(TIMT_CAP2)),
+    n_oxa      = sum(!is.na(TIMT_OXA2)),
+    n_capox    = sum(!is.na(TIMT_CAPOX2)),
+    median_HU  = round(median(liverHU_manual, na.rm = TRUE), 1),
+    .groups    = "drop"
+  ) %>% arrange(desc(n_patients)) %>% kable()
+```
+
+# Models — raw output
+
+Unformatted `summary()` for each Cox fit. Use this to spot anything unusual in standard errors, coefficients, or convergence.
+
+## CAP
+
+```{r}
+summary(cox_cap)
+```
+
+## OXA
+
+```{r}
+summary(cox_oxa)
+```
+
+## CAPOX
+
+```{r}
+summary(cox_capox)
+```
+
+# Diagnostics
+
+## Proportional hazards (Schoenfeld)
+
+```{r}
+ph_cap
+ph_oxa
+ph_capox
+```
+
+## Schoenfeld plots — CAPOX
+
+```{r fig.height=8}
+plot(ph_capox)
+```
+
+# Sensitivity Analyses
+
+Add new sensitivity / alternative-specification chunks below. The canonical objects (`cap`, `oxa`, `capox`, `cox_*`, `df`) are already in scope from `R/main_analysis.R`. Promote a finding into the paper only after deciding it changes (or robustly confirms) the canonical conclusion.
+
+<!--
+## Example: tertiles of liver HU
+
+```{r eval=FALSE}
+capox$hu_tertile <- cut(capox$liverHU_manual,
+                        breaks = quantile(capox$liverHU_manual, c(0, 1/3, 2/3, 1), na.rm = TRUE),
+                        include.lowest = TRUE, labels = c("low", "mid", "high"))
+cox_tertile <- coxph(Surv(time, event) ~ hu_tertile + age + sex + BBMI +
+                       BSMOKER + doseCAP + doseOXA + strata(hospital), data = capox)
+summary(cox_tertile)
+```
+-->
+
+# Feedback Responses
+
+Track feedback rounds here. Each entry: who, when, the comment, what we did.
+
+<!--
+## YYYY-MM-DD — reviewer / supervisor name
+
+**Comment:** ...
+
+**Response:** ...
+
+**Changes:** files touched, decision rationale.
+-->
+
+# Decision Log
+
+Non-obvious analytic decisions worth recording. Format: dated bullet, one or two sentences each.
+
+<!--
+- 2026-MM-DD — chose stratification over frailty model because the question is the within-hospital HU effect, not between-hospital variance.
+-->
