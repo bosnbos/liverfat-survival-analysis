@@ -6,13 +6,13 @@
 if (!length(getOption("repos")) || getOption("repos")["CRAN"] == "@CRAN@") {
   options(repos = c(CRAN = "https://cloud.r-project.org"))
 }
-required_packages <- c("survival")
+required_packages <- c("survival", "here")
 missing <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
 if (length(missing) > 0) install.packages(missing)
 
 library(survival)
 
-load("data/Dataset_liverfat.RData")
+load(here::here("data", "Dataset_liverfat.RData"))
 df <- dataset_leiden
 
 make_endpoint <- function(data, endpoint) {

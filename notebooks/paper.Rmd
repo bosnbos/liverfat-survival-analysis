@@ -2,7 +2,7 @@
 title: "Hospital-Level Variation in Liver Radiodensity and Chemotherapy-Induced Toxicities in Colon Cancer Patients"
 author: "Abdullah Abdullah & Noah Bos"
 date: "`r Sys.Date()`"
-knit: (function(input, ...) rmarkdown::render(input, output_dir = "reports", output_file = "paper.pdf"))
+knit: (function(input, ...) rmarkdown::render(input, output_dir = here::here("reports"), output_file = "paper.pdf"))
 output:
   bookdown::pdf_document2:
     latex_engine: xelatex
@@ -60,7 +60,7 @@ library(forestmodel)
 ```
 
 ```{r analysis, include=FALSE}
-source("R/main_analysis.R")
+source(here::here("R", "main_analysis.R"))
 ```
 
 ```{=latex}

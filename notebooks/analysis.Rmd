@@ -2,7 +2,7 @@
 title: "Liver Radiodensity & Chemotherapy Toxicity — Analysis Notebook"
 author: "Noah Bos & Abdullah Alam"
 date: "`r Sys.Date()`"
-knit: (function(input, ...) rmarkdown::render(input, output_dir = "reports", output_file = "analysis.html"))
+knit: (function(input, ...) rmarkdown::render(input, output_dir = here::here("reports"), output_file = "analysis.html"))
 output:
   html_document:
     toc: true
@@ -44,7 +44,7 @@ library(kableExtra)
 ```
 
 ```{r load-analysis}
-source("R/main_analysis.R")
+source(here::here("R", "main_analysis.R"))
 ```
 
 # Data
