@@ -4,7 +4,7 @@ Statistical analysis of the association between liver radiodensity (Hounsfield U
 
 The headline result is that hospital-level variation in measured liver radiodensity, likely reflecting differences in CT scanner calibration across centres, masks the within-hospital association in a pooled analysis. Once hospital is accounted for through stratification, a small within-hospital association is observed for the CAPOX endpoint (HR = 1.10 per 10 HU; 95% CI 1.00–1.21; p = 0.044). The same association is not detected without stratification.
 
-Authors: Noah Bos and Abdullah Alam. Statistical consulting project at Wageningen University & Research, in collaboration with the COLON cohort study (Leiden University Medical Center).
+Authors: Noah Bos and Abdullah Alam. Statistical consulting project at Leiden university, in collaboration with Deborah Ophoff (Wageningen University & Research) and the COLON cohort study.
 
 ## Outputs
 
