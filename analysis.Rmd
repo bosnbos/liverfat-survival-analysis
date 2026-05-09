@@ -2,6 +2,7 @@
 title: "Liver Radiodensity & Chemotherapy Toxicity — Analysis Notebook"
 author: "Noah Bos & Abdullah Alam"
 date: "`r Sys.Date()`"
+knit: (function(input, ...) rmarkdown::render(input, output_dir = "reports", output_file = "analysis.html"))
 output:
   html_document:
     toc: true
@@ -114,38 +115,158 @@ plot(ph_capox)
 
 # Sensitivity Analyses
 
-Add new sensitivity / alternative-specification chunks below. The canonical objects (`cap`, `oxa`, `capox`, `cox_*`, `df`) are already in scope from `R/main_analysis.R`. Promote a finding into the paper only after deciding it changes (or robustly confirms) the canonical conclusion.
+The canonical objects (`cap`, `oxa`, `capox`, `cox_*`, `df`) are in scope from `R/main_analysis.R`. Promote a finding into the paper only after deciding it changes (or robustly confirms) the canonical conclusion.
 
-<!--
-## Example: tertiles of liver HU
+## Are hospital-level event rates more variable than chance? (Ophoff §3.2 query)
 
-```{r eval=FALSE}
-capox$hu_tertile <- cut(capox$liverHU_manual,
-                        breaks = quantile(capox$liverHU_manual, c(0, 1/3, 2/3, 1), na.rm = TRUE),
-                        include.lowest = TRUE, labels = c("low", "mid", "high"))
-cox_tertile <- coxph(Surv(time, event) ~ hu_tertile + age + sex + BBMI +
-                       BSMOKER + doseCAP + doseOXA + strata(hospital), data = capox)
-summary(cox_tertile)
+**The question.** Paper §3.2 claims toxicity rates differ across hospitals based on the observed range (~33% to ~80%). The reviewer asks whether this range could simply be **binomial sampling variation around a common rate**: even if every hospital had identical true toxicity probability, finite-sample noise alone would generate different observed proportions, with smaller hospitals fluctuating more. So we need to know whether what we see exceeds what sampling alone would produce.
+
+**The test.** Build a hospital × event contingency table per endpoint and run **Pearson's chi-square test of independence**. The test statistic measures squared deviation between observed and expected counts under H₀: "all hospitals share the same toxicity rate." A large statistic (small p) means the observed table is unlikely under that null.
+
+**Validity.** The chi-square asymptotic approximation needs expected cell counts ≥ 5. The smallest observed cell count across all hospital × event combinations in our data is 7, so the approximation is reliable here — Monte Carlo simulation isn't needed.
+
+```{r hospital-rate-test}
+hospital_rate_test <- function(data, name) {
+  tab <- table(hospital = data$hospital, event = data$event)
+  cs  <- chisq.test(tab)
+  data.frame(
+    Endpoint  = name,
+    N         = sum(tab),
+    Hospitals = nrow(tab),
+    `Chi-sq`  = round(unname(cs$statistic), 2),
+    df        = unname(cs$parameter),
+    `p-value` = signif(cs$p.value, 3),
+    check.names = FALSE
+  )
+}
+
+bind_rows(
+  hospital_rate_test(cap,   "CAP"),
+  hospital_rate_test(oxa,   "OXA"),
+  hospital_rate_test(capox, "CAPOX")
+) %>% kable(caption = "Test of equal toxicity rates across hospitals (Pearson's chi-square)")
 ```
--->
+
+**How to read the p-value.**
+
+- **p > 0.05** — observed range of hospital toxicity rates is *consistent with* binomial sampling noise around a common rate. We cannot reject H₀. The §3.2 wording must be softened: *"the observed range is consistent with sampling variation around a common rate"* rather than *"baseline risk differs between hospitals."*
+- **0.01 < p < 0.05** — borderline evidence; mention the test result and let the reader judge.
+- **p < 0.01** — strong evidence that hospitals differ in toxicity rates beyond sampling noise. The §3.2 claim stands as written.
+
+**Either way, stratification is still justified.** Liver HU itself differs significantly across hospitals (ANOVA, §3.3), so the methodological motivation for stratifying — controlling for systematic measurement and case-mix differences — does not depend on this test.
+
+```{r hospital-rate-table}
+event_long <- bind_rows(
+  transmute(df, hospital, endpoint = "CAP",   event = TIMT_CAP2),
+  transmute(df, hospital, endpoint = "OXA",   event = TIMT_OXA2),
+  transmute(df, hospital, endpoint = "CAPOX", event = TIMT_CAPOX2)
+) %>% filter(!is.na(event))
+
+event_long %>%
+  group_by(endpoint, hospital) %>%
+  summarise(N = n(), Events = sum(event == 1),
+            `Rate (%)` = round(100 * mean(event == 1), 1), .groups = "drop") %>%
+  arrange(endpoint, desc(N)) %>%
+  kable(caption = "Hospital × endpoint event counts (raw, for inspection)")
+```
+
+**Interpretation:** if `p > 0.05` the observed range is consistent with sampling noise around a common rate; the descriptive claim in §3.2 needs softening to *"observed rates are consistent with sampling variation"* rather than *"baseline risk differs between hospitals"*. The methodological case for stratification still holds (HU **does** differ across hospitals — see ANOVA in §3.3).
+
+## Stratified vs. unstratified Cox (Ophoff sub-question 2)
+
+To answer sub-question 2 ("how does accounting for hospital affect the estimated HU association"), refit each Cox model **without** `strata(hospital)` and place the HU hazard ratio side by side with the stratified version.
+
+```{r unstratified-fits}
+cox_cap_unstrat <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + starting_dose, data = cap)
+
+cox_oxa_unstrat <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + starting_dose, data = oxa)
+
+cox_capox_unstrat <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + doseCAP + doseOXA, data = capox)
+```
+
+```{r strat-vs-unstrat}
+hu_row <- function(model, label, model_type) {
+  t <- tidy(model, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term == "liverHU_manual")
+  data.frame(
+    Endpoint = label, Model = model_type,
+    HR = round(t$estimate, 3),
+    `95% CI` = sprintf("%.3f–%.3f", t$conf.low, t$conf.high),
+    `p-value` = signif(t$p.value, 3),
+    check.names = FALSE
+  )
+}
+
+bind_rows(
+  hu_row(cox_cap,           "CAP",   "Stratified"),
+  hu_row(cox_cap_unstrat,   "CAP",   "Unstratified"),
+  hu_row(cox_oxa,           "OXA",   "Stratified"),
+  hu_row(cox_oxa_unstrat,   "OXA",   "Unstratified"),
+  hu_row(cox_capox,         "CAPOX", "Stratified"),
+  hu_row(cox_capox_unstrat, "CAPOX", "Unstratified")
+) %>% kable(caption = "Liver HU hazard ratio (per 1 HU): stratified vs. unstratified")
+```
+
+**Interpretation:** any meaningful shift between the two columns is the contribution of hospital-level confounding. If the estimates are similar, hospital adjustment isn't doing much; if they differ, the unstratified estimate is biased by between-hospital differences in HU and toxicity rates.
+
+## Rescaled liver HU effect (Ophoff: per-1-HU is tiny)
+
+The reviewer notes that HR per 1 HU looks trivially close to 1, and suggests presenting per 10 HU and/or per SD. We compute both for the stratified models.
+
+```{r rescaled-hu}
+rescale_hu <- function(model, label, data, scales = c("per 1 HU", "per 10 HU", "per SD")) {
+  cf <- coef(model)["liverHU_manual"]
+  se <- sqrt(vcov(model)["liverHU_manual", "liverHU_manual"])
+  sd_hu <- sd(data$liverHU_manual, na.rm = TRUE)
+
+  k <- c(`per 1 HU` = 1, `per 10 HU` = 10, `per SD` = sd_hu)[scales]
+
+  data.frame(
+    Endpoint = label,
+    Scale    = scales,
+    `HR`     = round(exp(cf * k), 3),
+    `95% CI` = sprintf("%.3f–%.3f", exp((cf - 1.96 * se) * k), exp((cf + 1.96 * se) * k)),
+    check.names = FALSE
+  )
+}
+
+bind_rows(
+  rescale_hu(cox_cap,   "CAP",   cap),
+  rescale_hu(cox_oxa,   "OXA",   oxa),
+  rescale_hu(cox_capox, "CAPOX", capox)
+) %>% kable(caption = "Liver HU hazard ratio at three scalings (stratified models)")
+```
+
+**Interpretation:** the per-10-HU and per-SD columns expose whether the effect is clinically meaningful at realistic exposure differences. SD of liver HU in this cohort is roughly 12–14 — a per-SD HR is the most directly interpretable.
 
 # Feedback Responses
 
-Track feedback rounds here. Each entry: who, when, the comment, what we did.
+## 2026-05-09 — Ophoff, Written Report v3
 
-<!--
-## YYYY-MM-DD — reviewer / supervisor name
+**Comments and responses:**
 
-**Comment:** ...
-
-**Response:** ...
-
-**Changes:** files touched, decision rationale.
--->
+| # | Comment | Response | Where |
+|---|---|---|---|
+| 1 | Sub-question 3 is vague | Rewrite | `paper.Rmd` Introduction |
+| 2 | "Frailty model" jargon | Drop or define | `paper.Rmd` Methods |
+| 3 | HR per 1 HU looks tiny — rescale | Present per 10 HU and per SD | This notebook §"Rescaled liver HU effect"; promote chosen scaling to `paper.Rmd` Tables 4 & 5 |
+| 4 | §3.2 hospital differences could be sampling noise | Chi-square test added | This notebook §"Are hospital-level event rates more variable than chance?"; rephrase paper §3.2 based on result |
+| 5 | Sub-question 2 not answered — compare stratified vs. unstratified | Side-by-side comparison added | This notebook §"Stratified vs. unstratified Cox"; promote table to `paper.Rmd` |
+| 6 | Sub-question 3 not answered | Address in Discussion | `paper.Rmd` Discussion |
+| 7 | Cite R version + packages | Add citation | `paper.Rmd` Methods (Software) |
+| 8 | Reconsider clinical-relevance claim | Update after rescaling | `paper.Rmd` end of Results 3.4 |
+| 9 | Sex "protective" wording awkward | Rephrase to name protected group | `paper.Rmd` Results §3.4 commentary |
+| 10 | p.3: "that they correctly handle censoring" → "the correct handling of censoring" | Fix | `paper.Rmd` Methods |
+| 11 | Tables 3 / 4 / 5: digits, NAs, format `1` → `1.00` | Fix table formatting | `paper.Rmd` Results |
+| 12 | Tables/figures should be more standalone | Improve captions | `paper.Rmd` throughout |
 
 # Decision Log
-
-Non-obvious analytic decisions worth recording. Format: dated bullet, one or two sentences each.
 
 <!--
 - 2026-MM-DD — chose stratification over frailty model because the question is the within-hospital HU effect, not between-hospital variance.

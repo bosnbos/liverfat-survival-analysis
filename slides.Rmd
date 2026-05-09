@@ -1,8 +1,8 @@
 ---
 title: "Liver Radiodensity and Chemotherapy Toxicity"
-subtitle: "Survival Analysis in a Dutch Multi-centre Cohort"
-author: "Noah Bos & Abdullah Alam"
-institute: "COLON Study · Wageningen University Research"
+subtitle: "Hospital-Level Variation in a Multi-centre Cohort"
+author: "Noah Bos \\& Abdullah Alam"
+institute: "COLON Study · Statistical Consulting Project"
 date: "`r Sys.Date()`"
 knit: (function(input, ...) rmarkdown::render(input, output_dir = "reports", output_file = "slides.pdf"))
 classoption: "aspectratio=169"
@@ -14,10 +14,15 @@ output:
 header-includes:
   - \usepackage{booktabs}
   - \usepackage{amsmath}
+  - \usepackage{tikz}
+  - \usetikzlibrary{positioning, arrows.meta}
   - \metroset{block=fill}
 ---
 
 ```{r install-packages, include=FALSE}
+if (!length(getOption("repos")) || getOption("repos")["CRAN"] == "@CRAN@") {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+}
 required_packages <- c(
   "survival", "survminer", "dplyr", "knitr",
   "broom", "ggplot2", "forestmodel", "kableExtra", "tibble"
@@ -32,7 +37,7 @@ knitr::opts_chunk$set(
   warning = FALSE,
   message = FALSE,
   fig.width  = 11,
-  fig.height = 3.8
+  fig.height = 4
 )
 
 library(survival)
@@ -48,283 +53,369 @@ library(forestmodel)
 
 ```{r analysis, include=FALSE}
 source("R/main_analysis.R")
-
-hu_cap   <- tidy(cox_cap,   exponentiate = TRUE, conf.int = TRUE) %>% filter(term == "liverHU_manual")
-hu_oxa   <- tidy(cox_oxa,   exponentiate = TRUE, conf.int = TRUE) %>% filter(term == "liverHU_manual")
-hu_capox <- tidy(cox_capox, exponentiate = TRUE, conf.int = TRUE) %>% filter(term == "liverHU_manual")
-
-hu_range    <- range(capox$liverHU_manual, na.rm = TRUE)
-hu_iqr      <- IQR(capox$liverHU_manual, na.rm = TRUE)
-hu_q25      <- quantile(capox$liverHU_manual, 0.25, na.rm = TRUE)
-hu_q75      <- quantile(capox$liverHU_manual, 0.75, na.rm = TRUE)
-
-hr_iqr_capox   <- round(hu_capox$estimate ^ hu_iqr,   2)
-hr_range_capox <- round(hu_capox$estimate ^ diff(hu_range), 2)
-
-cap_hosp_rates <- df %>%
-  filter(!is.na(TIMT_CAP2)) %>%
-  group_by(hospital) %>%
-  summarise(rate = mean(TIMT_CAP2 == 1, na.rm = TRUE), .groups = "drop")
 ```
 
-## Background \& Research Question
+## The clinical question
 
-**Colorectal cancer (stage II/III)** is treated with capecitabine (CAP), oxaliplatin (OXA), or both (CAPOX). These cause toxicities — hand-foot syndrome, neuropathy — that force dose reductions or early discontinuation.
+\vspace{12pt}
 
-**Candidate predictor:** Liver fat measured as radiodensity in **Hounsfield Units (HU)** on CT scans at diagnosis. Lower HU = more fat = potentially impaired drug metabolism.
+\begin{center}
+\begin{tikzpicture}[font=\small, >=Stealth]
+  % timeline
+  \draw[->, line width=1pt] (-0.5, 0) -- (10.5, 0);
 
-\vspace{4pt}
+  % top labels
+  \node[blue!60!black, font=\bfseries] at (0, 1.0) {Diagnosis};
+  \node[orange!90!black, font=\bfseries] at (8.5, 1.0) {Toxicity};
 
-\begin{block}{Research question}
-Does liver radiodensity predict \textit{when} a patient experiences dose-limiting toxicity — after accounting for differences across the 11 hospitals in the COLON cohort (Wageningen University Research)?
-\end{block}
+  % icons on timeline
+  \node[circle, fill=blue!30, draw=blue!60, minimum size=11mm, font=\bfseries\small] (ct) at (0,0) {CT};
+  \node[circle, fill=orange!70, draw=orange!90!black, minimum size=11mm, font=\bfseries\small] (tox) at (8.5, 0) {!};
 
-## Study Design
+  % cycles
+  \node[circle, fill=gray!20, minimum size=7mm] at (2.5, 0) {1};
+  \node[circle, fill=gray!20, minimum size=7mm] at (4.0, 0) {2};
+  \node[circle, fill=gray!20, minimum size=7mm] at (5.5, 0) {3};
+  \node[circle, fill=gray!20, minimum size=7mm] at (7.0, 0) {4};
+  \node[gray, font=\itshape\small] at (4.75, -0.7) {chemotherapy cycles};
 
-```{r summary-table}
-endpoint_summary <- tibble(
-  Endpoint         = c("CAP", "OXA", "CAPOX"),
-  N                = c(nrow(cap), nrow(oxa), nrow(capox)),
-  Events           = c(sum(cap$event), sum(oxa$event), sum(capox$event)),
-  Censored         = c(sum(!cap$event), sum(!oxa$event), sum(!capox$event)),
-  `Event rate (%)` = round(c(mean(cap$event), mean(oxa$event), mean(capox$event)) * 100, 1)
-)
-kable(endpoint_summary, format = "latex", booktabs = TRUE, linesep = "") %>%
+  % HU + association arrow below
+  \node[blue!60!black, font=\bfseries] at (0, -1.6) {Liver HU};
+  \draw[->, dashed, thick, gray] (1.1, -1.6) -- (8.0, -1.6);
+  \node[gray, font=\itshape] at (4.55, -2.0) {is it associated with the timing of toxicity?};
+\end{tikzpicture}
+\end{center}
+
+\vspace{12pt}
+
+\centerline{\small Capecitabine and oxaliplatin cause toxicities that force dose reductions, delays, or stopping treatment.}
+\centerline{\small Liver fat at diagnosis is a plausible candidate marker.}
+
+## The data
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.55\textwidth}
+
+\textbf{Cohort:} COLON study, prospective, 11 Dutch hospitals.
+
+\vspace{6pt}
+
+\textbf{Three endpoints, separate models:}
+\begin{itemize}
+  \setlength\itemsep{1pt}
+  \item CAP: capecitabine toxicity
+  \item OXA: oxaliplatin toxicity
+  \item CAPOX: combined regimen toxicity
+\end{itemize}
+
+\vspace{6pt}
+
+\textbf{Time:} chemotherapy cycles to first dose-limiting toxicity (or censored at last cycle).
+
+\vspace{6pt}
+
+\textbf{Adjusted for:} age, sex, BMI, smoking, treatment-specific starting dose.
+
+\end{column}
+\begin{column}{0.42\textwidth}
+
+```{r summary-tbl}
+tibble(
+  Endpoint     = c("CAP", "OXA", "CAPOX"),
+  N            = c(nrow(cap), nrow(oxa), nrow(capox)),
+  Events       = c(sum(cap$event), sum(oxa$event), sum(capox$event)),
+  `Event rate` = sprintf("%.0f%%", c(mean(cap$event), mean(oxa$event), mean(capox$event)) * 100)
+) %>%
+  kable(format = "latex", booktabs = TRUE, linesep = "") %>%
   kable_styling(font_size = 11, latex_options = "hold_position")
 ```
 
-\vspace{4pt}
+\end{column}
+\end{columns}
 
-**Outcome:** Chemotherapy cycles until dose-limiting toxicity (or censored if none) \
-**Exposure:** Liver HU — CT scan at diagnosis \
-**Adjusted for:** Age, sex, BMI, smoking, starting dose \
-**Three separate models** — one per treatment
+## What makes this tricky
 
-## Survival Analysis: What Is It Used For?
-
-Survival analysis models **time until an event** — whenever you care about *when*, not just *if*.
-
-\vspace{4pt}
-
-:::::: {.columns}
-
-::: {.column width="48%"}
-
-**Healthcare & life sciences**
-
-- Time to disease recurrence after surgery
-- Time to death or hospital readmission
-- Time to side-effects during treatment
-
-\vspace{6pt}
-
-**Business & consulting**
-
-- Customer churn: when does a subscriber cancel?
-- Time to first purchase after sign-up
-- Employee attrition: when do staff leave?
-
-:::
-
-::: {.column width="48%"}
-
-**Finance & risk**
-
-- Time to loan default
-- Time to insurance claim
-
-\vspace{6pt}
-
-**Engineering & operations**
-
-- Machine failure / predictive maintenance
-- Time to system outage
-
-\vspace{6pt}
-
-**Digital / product**
-
-- Time to user conversion or drop-off
-- A/B test: which variant converts faster?
-
-:::
-
-::::::
-
-## Why Survival Analysis? Censoring \& Core Concepts
-
-:::::: {.columns}
-
-::: {.column width="48%"}
-
-**The censoring problem:** Not every patient experiences toxicity. A patient finishing 8 cycles event-free is not a failure — they tell us *"at least 8 cycles without toxicity."* Logistic regression discards this information entirely.
-
-\vspace{6pt}
-
-Any model that ignores censored observations will **overestimate** risk by treating non-events as missing data.
-
-:::
-
-::: {.column width="48%"}
-
-**Survival function** — probability of remaining event-free beyond time $t$:
-$$S(t) = P(T > t)$$
-
-**Hazard function** — instantaneous event rate at time $t$, given event-free so far:
-$$h(t) = \lim_{\Delta t \to 0} \frac{P(t \leq T < t {+} \Delta t \mid T \geq t)}{\Delta t}$$
-
-They carry the same information:
-$$S(t) = \exp\!\left(-\int_0^t h(u)\, du\right)$$
-
-:::
-
-::::::
-
-## The Cox Model
-
-:::::: {.columns}
-
-::: {.column width="52%"}
-
-```{r cox-curve, fig.height=3.4, fig.width=6.2}
-set.seed(42)
-n <- 40
-dummy <- data.frame(
-  time  = c(rexp(n, rate = 0.30), rexp(n, rate = 0.12)),
-  event = rbinom(2 * n, 1, prob = 0.85),
-  group = rep(c("Group A (higher risk)", "Group B (lower risk)"), each = n)
-)
-dummy$time <- pmax(ceiling(dummy$time), 1)
-
-fit_dummy <- survfit(Surv(time, event) ~ group, data = dummy)
-ggsurvplot(
-  fit_dummy,
-  palette      = c("#D55E00", "#0072B2"),
-  conf.int     = FALSE,
-  legend.title = "",
-  legend       = "bottom",
-  xlab         = "Time",
-  ylab         = "S(t)  —  Prob. event-free",
-  title        = "Kaplan-Meier curves (illustrative)",
-  ggtheme      = theme_minimal(base_size = 11)
-)
-```
-
-:::
-
-::: {.column width="44%"}
-
-**Cox model** — regression on the hazard:
-
-$$h(t \mid \mathbf{x}) = h_0(t) \cdot e^{\,\beta_1 x_1 + \cdots + \beta_p x_p}$$
-
-\vspace{4pt}
-
-$h_0(t)$ = baseline hazard, left unspecified
-
-\vspace{8pt}
-
-**Hazard ratio:** $\text{HR}_j = e^{\hat\beta_j}$
-
-\vspace{4pt}
-
-HR $= 1.20 \Rightarrow$ 20\% higher risk at every cycle per one-unit increase in $x_j$
-
-\vspace{4pt}
-
-HR $< 1 \Rightarrow$ protective; HR $> 1 \Rightarrow$ harmful
-
-:::
-
-::::::
-
-## Hospital Heterogeneity
-
-```{r hosp-plot, fig.height=3.5}
-hosp_anova <- anova(lm(liverHU_manual ~ hospital, data = df))
-f_val <- round(hosp_anova$`F value`[1], 1)
-p_val <- format.pval(hosp_anova$`Pr(>F)`[1], digits = 2, eps = 0.001)
-
-ggplot(df, aes(x = reorder(hospital, liverHU_manual, FUN = median, na.rm = TRUE),
-               y = liverHU_manual)) +
-  geom_boxplot(fill = "#56B4E9", alpha = 0.7, outlier.size = 0.8) +
-  labs(
-    x        = "Hospital (ordered by median HU)",
-    y        = "Liver radiodensity (HU)",
-    title    = "Liver HU differs significantly across hospitals",
-    subtitle = paste0("One-way ANOVA: F = ", f_val, ", p ", p_val,
-                      "  —  CT scanner differences and patient mix")
-  ) +
+```{r hu-boxplot, fig.height=3.4}
+ggplot(df, aes(reorder(hospital, liverHU_manual, FUN = median, na.rm = TRUE),
+               liverHU_manual)) +
+  geom_boxplot(fill = "#56B4E9", alpha = 0.7, outlier.size = 0.7) +
+  labs(x = NULL, y = "Liver radiodensity (HU)",
+       title = "Liver HU varies systematically across hospitals") +
   theme_minimal(base_size = 12) +
   theme(axis.text.x = element_text(angle = 30, hjust = 1))
 ```
 
-CAP toxicity rates range from `r round(min(cap_hosp_rates$rate)*100)`\% to `r round(max(cap_hosp_rates$rate)*100)`\% across hospitals. Both exposure and outcome differ by hospital — a textbook confounding situation.
+11 hospitals means 11 different CT scanners. Liver HU differs significantly between centres (ANOVA, p `r format.pval(anova(lm(liverHU_manual ~ hospital, data = df))[["Pr(>F)"]][1], digits = 2, eps = 0.001)`), most likely because of scanner calibration. Toxicity rates also differ for OXA, but for CAP and CAPOX the variation is consistent with sampling noise.
 
-## Stratified Cox Model
+So hospital looks like a confounder we should not just ignore.
 
-Instead of adding hospital as a covariate (which forces one shared hazard curve), we **stratify**:
+## How we handle it
 
-$$h_k(t \mid \mathbf{x}) = \underbrace{h_{0k}(t)}_{\text{hospital-specific baseline}} \cdot \; e^{\,\boldsymbol{\beta}^\top \mathbf{x}}$$
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
 
-Hospital $k$ gets its **own** $h_{0k}(t)$, absorbing all between-hospital differences. The liver HU effect $\boldsymbol{\beta}$ is estimated from **within-hospital comparisons only**.
+\textbf{Unstratified Cox}
 
-\vspace{6pt}
-
-\begin{block}{Why this matters}
-Without stratification, the liver HU estimate is contaminated by between-hospital differences in both the HU measurement and toxicity rates. Stratification removes this confounding entirely.
-\end{block}
-
-## Results
-
-```{r hu-hr-table}
-hr_hu <- bind_rows(
-  tidy(cox_cap,   exponentiate = TRUE, conf.int = TRUE) %>%
-    filter(term == "liverHU_manual") %>% mutate(Endpoint = "CAP"),
-  tidy(cox_oxa,   exponentiate = TRUE, conf.int = TRUE) %>%
-    filter(term == "liverHU_manual") %>% mutate(Endpoint = "OXA"),
-  tidy(cox_capox, exponentiate = TRUE, conf.int = TRUE) %>%
-    filter(term == "liverHU_manual") %>% mutate(Endpoint = "CAPOX")
-) %>%
-  mutate(
-    `HR (95% CI)` = paste0(round(estimate, 2), " (",
-                            round(conf.low, 2), "–", round(conf.high, 2), ")"),
-    `p-value`     = round(p.value, 3),
-    Interpretation = dplyr::case_when(
-      p.value < 0.05 ~ "Significant",
-      p.value < 0.10 ~ paste0("Borderline (p = ", round(p.value, 3), ")"),
-      TRUE           ~ "Not significant"
-    )
-  ) %>%
-  select(Endpoint, `HR (95% CI)`, `p-value`, Interpretation)
-
-kable(hr_hu, format = "latex", booktabs = TRUE, linesep = "",
-      caption = "Liver radiodensity effect (per 1 HU) on time to toxicity — stratified Cox models") %>%
-  kable_styling(font_size = 11, latex_options = "hold_position")
-```
+$$h(t \mid \mathbf{x}) = h_0(t)\, e^{\beta\,\text{HU} + \boldsymbol{\gamma}^\top \mathbf{x}}$$
 
 \vspace{4pt}
 
-HR = 1.01 per HU looks small, but liver HU ranges from `r round(hu_range[1])` to `r round(hu_range[2])` in this cohort. A patient with high liver fat vs. one with little fat can differ by `r round(diff(hu_range))` HU — where the hazard compounds to HR $\approx$ **`r hr_range_capox`**, a `r round((hr_range_capox-1)*100)`\% difference in toxicity risk.
+One baseline hazard for everyone. The estimate of $\beta$ mixes within-hospital and between-hospital differences in liver HU.
 
-## CAPOX: Full Model Results
+\end{column}
+\begin{column}{0.48\textwidth}
 
-```{r forest-capox, fig.height=4.0}
-forest_model(cox_capox)
+\textbf{Stratified by hospital}
+
+$$h_k(t \mid \mathbf{x}) = h_{0k}(t)\, e^{\beta\,\text{HU} + \boldsymbol{\gamma}^\top \mathbf{x}}$$
+
+\vspace{4pt}
+
+Each hospital $k$ has its own baseline. The estimate of $\beta$ comes from \textit{within-hospital} comparisons only.
+
+\end{column}
+\end{columns}
+
+\vspace{14pt}
+
+\begin{block}{What we did}
+Fit both specifications for each endpoint and compare. The difference between the two estimates tells us how much the unstratified version is being affected by between-hospital differences.
+\end{block}
+
+## The main result
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.40\textwidth}
+
+\vspace{16pt}
+
+\textbf{CAP and OXA}
+
+\small Neither specification reaches statistical significance.
+
+\vspace{14pt}
+
+\normalsize \textbf{CAPOX}
+
+\small Unstratified: HR $\approx$ 1.00, no association.\\
+Stratified: HR = 1.10 (1.00 -- 1.21), p = 0.044.
+
+\vspace{14pt}
+
+\normalsize \textit{For CAPOX, between-hospital differences in measured HU were hiding the within-hospital signal.}
+
+\end{column}
+\begin{column}{0.58\textwidth}
+
+\vspace*{\fill}
+
+```{r forest-strat-vs-unstrat, fig.height=4.5, fig.width=5.5, out.width="100%"}
+make_row <- function(model, label, type, scale = 10) {
+  cf <- coef(model)["liverHU_manual"]
+  se <- sqrt(vcov(model)["liverHU_manual", "liverHU_manual"])
+  data.frame(
+    Endpoint = label, Type = type,
+    HR       = exp(cf * scale),
+    CI_low   = exp((cf - 1.96 * se) * scale),
+    CI_high  = exp((cf + 1.96 * se) * scale)
+  )
+}
+
+forest_df <- bind_rows(
+  make_row(cox_cap_unstrat,   "CAP",   "Unstratified"),
+  make_row(cox_cap,           "CAP",   "Stratified"),
+  make_row(cox_oxa_unstrat,   "OXA",   "Unstratified"),
+  make_row(cox_oxa,           "OXA",   "Stratified"),
+  make_row(cox_capox_unstrat, "CAPOX", "Unstratified"),
+  make_row(cox_capox,         "CAPOX", "Stratified")
+)
+forest_df$Endpoint <- factor(forest_df$Endpoint, levels = rev(c("CAP", "OXA", "CAPOX")))
+forest_df$Type     <- factor(forest_df$Type,     levels = c("Unstratified", "Stratified"))
+
+ggplot(forest_df, aes(x = HR, y = Endpoint, color = Type)) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "gray60") +
+  geom_pointrange(aes(xmin = CI_low, xmax = CI_high),
+                  position = position_dodge(width = 0.55), size = 0.7, fatten = 3) +
+  scale_color_manual(values = c("Unstratified" = "#999999", "Stratified" = "#D55E00")) +
+  scale_x_continuous(breaks = c(0.9, 1.0, 1.1, 1.2)) +
+  labs(x = "HR per 10 HU (95% CI)", y = NULL, color = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "top",
+        legend.direction = "horizontal",
+        legend.margin = margin(0, 0, 0, 0))
 ```
 
-## Conclusion
+\vspace*{\fill}
 
-\begin{block}{Answer}
-After stratifying by hospital, liver radiodensity shows a statistically significant association with CAPOX toxicity timing. Per HU the effect is small, but across the observed HU range the cumulative hazard difference is substantial.
-\end{block}
+\end{column}
+\end{columns}
+
+## How big is the effect, in context?
+
+For CAPOX (the conventionally significant endpoint):
 
 \vspace{6pt}
 
-**Three take-aways:**
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Scale} & \textbf{HR} & \textbf{95\% CI} \\
+\midrule
+per 10 HU                            & `r sprintf("%.2f", exp(10 * coef(cox_capox)["liverHU_manual"]))` & `r sprintf("%.2f -- %.2f", exp(10 * (coef(cox_capox)["liverHU_manual"] - 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"]))), exp(10 * (coef(cox_capox)["liverHU_manual"] + 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"]))))` \\[3pt]
+per 1 SD ($\approx$ `r round(sd(capox$liverHU_manual, na.rm = TRUE), 0)` HU) & `r sprintf("%.2f", exp(sd(capox$liverHU_manual, na.rm = TRUE) * coef(cox_capox)["liverHU_manual"]))` & `r sprintf("%.2f -- %.2f", exp(sd(capox$liverHU_manual, na.rm = TRUE) * (coef(cox_capox)["liverHU_manual"] - 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"]))), exp(sd(capox$liverHU_manual, na.rm = TRUE) * (coef(cox_capox)["liverHU_manual"] + 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"]))))` \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-1. **Hospital heterogeneity is real** — liver HU and toxicity rates differ across all 11 hospitals. Ignoring it biases the results.
+\vspace{12pt}
 
-2. **Stratification beats covariate adjustment** when hospitals differ in their entire baseline hazard curve, not just in a single HR.
+A patient with a fatty liver compared to one with a healthy liver, about one within-cohort SD apart, has roughly a \textbf{`r sprintf("%.0f\\%%", 100 * (exp(sd(capox$liverHU_manual, na.rm = TRUE) * coef(cox_capox)["liverHU_manual"]) - 1))` higher hazard} of CAPOX toxicity.
 
-3. **Scale matters for interpretation** — HR = `r round(hu_capox$estimate, 2)` per HU sounds trivial, but the full observed HU range spans `r round(diff(hu_range))` units, giving a compounded HR of `r hr_range_capox`. Always put effect sizes in the context of the variable's real-world range.
+\vspace{8pt}
+
+\begin{block}{Caveats}
+The lower bound of the CI is right at 1, the cohort is observational, and we have not validated this in another dataset. The effect is real in this cohort, but it is not yet a clinical tool.
+\end{block}
+
+## Takeaways
+
+\begin{enumerate}
+  \setlength\itemsep{8pt}
+  \item \textbf{Stratification really mattered for our results.}\\
+  Without it we would have concluded \textit{no association} for CAPOX. Hospital-level CT calibration was hiding the within-hospital signal.
+
+  \item \textbf{There is a small within-hospital effect for CAPOX.}\\
+  HR $\approx$ 1.10 per 10 HU, or about 1.21 per SD. No effect for CAP or OXA.
+
+  \item \textbf{Not a clinical tool yet.}\\
+  Effect is modest, the CI is wide, and the design is observational. The transferable lesson is methodological: in multi-centre cohorts with measurement heterogeneity, the within-hospital contrast can look quite different from the pooled one.
+\end{enumerate}
+
+# Backup material
+
+## Hospital toxicity rates: chi-square test
+
+Tests whether observed event-rate differences across hospitals exceed binomial sampling noise around a common rate.
+
+```{r chisq-table}
+tibble(
+  Endpoint = c("CAP", "OXA", "CAPOX"),
+  N        = c(sum(table(cap$hospital, cap$event)),
+               sum(table(oxa$hospital, oxa$event)),
+               sum(table(capox$hospital, capox$event))),
+  `Chi-sq` = c(round(unname(chi_cap$statistic),   2),
+               round(unname(chi_oxa$statistic),   2),
+               round(unname(chi_capox$statistic), 2)),
+  df       = c(unname(chi_cap$parameter),
+               unname(chi_oxa$parameter),
+               unname(chi_capox$parameter)),
+  `p-value` = sapply(c(chi_cap$p.value, chi_oxa$p.value, chi_capox$p.value),
+                     function(p) ifelse(p < 0.001, "<0.001", sprintf("%.3f", p)))
+) %>%
+  kable(format = "latex", booktabs = TRUE, linesep = "") %>%
+  kable_styling(font_size = 11, latex_options = "hold_position")
+```
+
+\vspace{8pt}
+
+\begin{itemize}
+  \setlength\itemsep{2pt}
+  \item Smallest hospital $\times$ event cell count is 7, so the asymptotic chi-square is reliable (no need for Monte Carlo simulation).
+  \item For OXA the differences are real. For CAP and CAPOX the observed range is consistent with sampling noise around a common rate.
+  \item Stratification is still justified by the liver HU heterogeneity (ANOVA), regardless of this test.
+\end{itemize}
+
+## Full covariate model: CAP
+
+```{r forest-cap-full, fig.height=4.2}
+forest_model(cox_cap)
+```
+
+For CAP, none of the covariates reach statistical significance. The CAP model is generally less informative, suggesting that capecitabine-related toxicity is less strongly tied to the patient characteristics included here.
+
+## Full covariate model: OXA
+
+```{r forest-oxa-full, fig.height=4.2}
+forest_model(cox_oxa)
+```
+
+For OXA, age, sex (male less affected), smoking status, and oxaliplatin starting dose are all significantly associated with toxicity. Liver HU sits just outside conventional significance (p = 0.060).
+
+## Full covariate model: CAPOX
+
+```{r forest-capox-full, fig.height=4.2}
+forest_model(cox_capox)
+```
+
+For CAPOX, age, sex, and smoking show consistent associations with toxicity, similar to the OXA model. Liver HU reaches conventional significance (p = 0.044).
+
+## Proportional hazards check
+
+Schoenfeld residual test, GLOBAL row per model. A non-significant p means no evidence the proportional-hazards assumption is violated.
+
+```{r ph-table}
+ph_global <- data.frame(
+  Endpoint = c("CAP", "OXA", "CAPOX"),
+  `Chi-sq` = sapply(list(ph_cap, ph_oxa, ph_capox),
+                    function(x) round(x$table["GLOBAL", "chisq"], 2)),
+  df       = sapply(list(ph_cap, ph_oxa, ph_capox),
+                    function(x) x$table["GLOBAL", "df"]),
+  `p-value` = sapply(list(ph_cap, ph_oxa, ph_capox),
+                     function(x) {
+                       p <- x$table["GLOBAL", "p"]
+                       ifelse(p < 0.001, "<0.001", sprintf("%.3f", p))
+                     }),
+  check.names = FALSE
+)
+
+kable(ph_global, format = "latex", booktabs = TRUE, linesep = "",
+      row.names = FALSE) %>%
+  kable_styling(font_size = 11, latex_options = "hold_position")
+```
+
+\vspace{8pt}
+
+All three GLOBAL p-values are well above 0.05. Per-covariate Schoenfeld results (also non-significant) are in the analyst notebook.
+
+## Kaplan-Meier curves
+
+```{r km-curves, fig.height=4.0}
+fit_cap   <- survfit(Surv(time, event) ~ 1, data = cap)
+fit_oxa   <- survfit(Surv(time, event) ~ 1, data = oxa)
+fit_capox <- survfit(Surv(time, event) ~ 1, data = capox)
+
+p_cap   <- ggsurvplot(fit_cap,   data = cap,   conf.int = TRUE, title = "CAP",
+                      xlab = "Cycles", ylab = "Toxicity-free",
+                      ggtheme = theme_minimal(base_size = 10))
+p_oxa   <- ggsurvplot(fit_oxa,   data = oxa,   conf.int = TRUE, title = "OXA",
+                      xlab = "Cycles", ylab = "Toxicity-free",
+                      ggtheme = theme_minimal(base_size = 10))
+p_capox <- ggsurvplot(fit_capox, data = capox, conf.int = TRUE, title = "CAPOX",
+                      xlab = "Cycles", ylab = "Toxicity-free",
+                      ggtheme = theme_minimal(base_size = 10))
+
+arrange_ggsurvplots(list(p_cap, p_oxa, p_capox), ncol = 3, nrow = 1)
+```
+
+Most events occur in the first few cycles. The probability of remaining toxicity-free drops sharply early on, then stabilises as fewer patients remain at risk.
+
+## Sample sizes per hospital (CAP)
+
+```{r per-hospital}
+df %>%
+  filter(!is.na(TIMT_CAP2)) %>%
+  group_by(Hospital = hospital) %>%
+  summarise(
+    N        = n(),
+    Events   = sum(TIMT_CAP2 == 1),
+    `Rate (%)` = round(100 * mean(TIMT_CAP2 == 1, na.rm = TRUE), 0),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(N)) %>%
+  kable(format = "latex", booktabs = TRUE, linesep = "") %>%
+  kable_styling(font_size = 9, latex_options = "hold_position")
+```
+
+\vspace{6pt}
+
+Hospital sizes range from very small to ~80 patients. The smallest hospitals contribute little to the within-hospital comparisons, which is appropriate: stratification gives them their own baseline rather than letting them drag a pooled estimate around.

@@ -3,6 +3,9 @@
 # Experimental code, sensitivity checks, and exploratory work belong in
 # analysis.Rmd or in standalone scripts under R/, not here.
 
+if (!length(getOption("repos")) || getOption("repos")["CRAN"] == "@CRAN@") {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+}
 required_packages <- c("survival")
 missing <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
 if (length(missing) > 0) install.packages(missing)
@@ -66,6 +69,29 @@ cox_capox <- coxph(
   data = capox
 )
 
+cox_cap_unstrat <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + starting_dose,
+  data = cap
+)
+cox_oxa_unstrat <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + starting_dose,
+  data = oxa
+)
+cox_capox_unstrat <- coxph(
+  Surv(time, event) ~ liverHU_manual + age + sex + BBMI +
+    BSMOKER + doseCAP + doseOXA,
+  data = capox
+)
+
 ph_cap   <- cox.zph(cox_cap)
 ph_oxa   <- cox.zph(cox_oxa)
 ph_capox <- cox.zph(cox_capox)
+
+hospital_chisq <- function(data) {
+  chisq.test(table(hospital = data$hospital, event = data$event))
+}
+chi_cap   <- hospital_chisq(cap)
+chi_oxa   <- hospital_chisq(oxa)
+chi_capox <- hospital_chisq(capox)

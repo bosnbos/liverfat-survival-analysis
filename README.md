@@ -52,6 +52,16 @@ Older iterations are kept in `archive/` for traceability:
 2. Open `liverfat_survival_analysis.Rproj` in RStudio
 3. Knit any of: `analysis.Rmd`, `paper.Rmd`, `slides.Rmd`
 
+**RStudio:** click the Knit button — output goes to `reports/`.
+
+**Terminal:** use the `render.R` helper to honour each Rmd's `knit:` hook (raw `rmarkdown::render()` ignores it and dumps in the project root):
+
+```sh
+Rscript render.R paper.Rmd       # → reports/paper.pdf
+Rscript render.R slides.Rmd      # → reports/slides.pdf
+Rscript render.R analysis.Rmd    # → reports/analysis.html
+```
+
 Each Rmd sources `R/main_analysis.R` automatically — no manual setup needed.
 
 Required packages: `survival`, `survminer`, `dplyr`, `knitr`, `broom`, `ggplot2`, `forestmodel`, `kableExtra`, `tibble`. Missing packages are auto-installed by the Rmd setup chunks.
