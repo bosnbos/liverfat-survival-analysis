@@ -1,0 +1,314 @@
+---
+title: "Does Liver Radiodensity Predict Chemotherapy Toxicity?"
+subtitle: "Time-to-event analysis across CAP, OXA, and CAPOX"
+author: "Noah Bos & Abdullah Alam"
+date: "`r Sys.Date()`"
+
+output:
+  beamer_presentation:
+    theme: "Madrid"
+---
+
+```{r install-packages, include=FALSE}
+required_packages <- c(
+  "survival", "survminer", "dplyr", "knitr",
+  "broom", "ggplot2", "forestmodel", "kableExtra", "tibble"
+)
+missing <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+if (length(missing) > 0) install.packages(missing)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 5
+)
+
+library(survival)
+library(survminer)
+library(dplyr)
+library(tibble)
+library(knitr)
+library(kableExtra)
+library(broom)
+library(ggplot2)
+library(forestmodel)
+```
+
+```{r}
+load("data/Dataset_liverfat.RData")
+df = dataset_leiden
+```
+
+```{r data-prep, include=FALSE}
+## FIX: make_endpoint moved here so analysis datasets (cap/oxa/capox) exist
+## before the summary table chunk. Previously the function was defined at
+## line ~85, AFTER the summary table — so the table counted raw N
+## (non-missing event only: 344/311/359) while the KM curves used
+## complete-case N (314/289/339). The gap of 30/22/20 patients per endpoint
+## consists of individuals who have a non-missing event indicator but are
+## missing at least one model covariate (liverHU_manual, age, sex, BBMI,
+## BSMOKER, hospital, or starting dose). Both numbers are correct for their
+## respective purpose; this fix makes the summary table show the analysis N.
+
+make_endpoint <- function(data, endpoint){
+
+  if(endpoint=="CAP"){
+    event <- data$TIMT_CAP2
+    time  <- data$cycle_till_timt
+    dose  <- data$starting_doseCAP
+  }
+
+  if(endpoint=="OXA"){
+    event <- data$TIMT_OXA2
+    time  <- data$cycle_till_timtOXA
+    dose  <- data$starting_doseOXA
+  }
+
+  if(endpoint=="CAPOX"){
+    event   <- data$TIMT_CAPOX2
+    time    <- data$cycle_till_timtCAPOX
+    ## FIX: added both dose variables for CAPOX; previously neither was
+    ## captured here, so they were silently absent from the dataset and
+    ## excluded from the Cox model.
+    doseCAP <- data$starting_doseCAP
+    doseOXA <- data$starting_doseOXA
+  }
+
+  out <- data.frame(
+    time, event,
+    liverHU_manual = data$liverHU_manual,
+    age      = data$age,
+    sex      = data$sex,
+    BBMI     = data$BBMI,
+    BSMOKER  = data$BSMOKER,
+    hospital = data$hospital
+  )
+
+  if(endpoint == "CAP" || endpoint == "OXA"){
+    out$starting_dose <- dose
+  }
+
+  ## FIX: attach CAPOX dose variables to the output data frame
+  if(endpoint == "CAPOX"){
+    out$doseCAP <- doseCAP
+    out$doseOXA <- doseOXA
+  }
+
+  out <- out[complete.cases(out), ]
+  out
+}
+
+cap   <- make_endpoint(df, "CAP")
+oxa   <- make_endpoint(df, "OXA")
+capox <- make_endpoint(df, "CAPOX")
+```
+
+# Study Objective
+
+- Assess whether liver radiodensity (HU) predicts time to dose-limiting toxicity  
+- Outcome: number of cycles until toxicity occurs  
+- Adjusted for patient characteristics and hospital differences  
+
+**Key takeaway:** Liver HU is evaluated for its added predictive value in clinical decision-making.
+
+# Toxicity Endpoints Analyzed Separately
+
+- CAP toxicity  
+- OXA toxicity  
+- CAPOX toxicity  
+
+**Key takeaway:** Each treatment is evaluated using a separate time-to-event model.
+
+# Observed Toxicity Rates Differ by Treatment
+
+```{r}
+## FIX: count N from the complete-case analysis datasets so numbers match
+## the KM curves. Raw eligible N (non-missing event only) was 344/311/359;
+## analysis N after dropping rows with any missing covariate is 314/289/339.
+endpoint_summary <- tibble(
+  Endpoint = c("CAP", "OXA", "CAPOX"),
+  N        = c(nrow(cap),   nrow(oxa),   nrow(capox)),
+  Events   = c(sum(cap$event),  sum(oxa$event),  sum(capox$event)),
+  Censored = c(sum(cap$event==0), sum(oxa$event==0), sum(capox$event==0))
+)
+
+kable(endpoint_summary)
+```
+
+**Key takeaway:** Event rates differ across treatments, with sufficient events to support survival analysis.
+
+# Liver Radiodensity Varies Across Hospitals
+
+```{r}
+ggplot(df, aes(hospital, liverHU_manual)) +
+  geom_boxplot() +
+  theme_minimal()
+```
+
+**Key takeaway:** Liver HU distributions differ between hospitals, suggesting baseline differences that are accounted for through stratification.
+
+
+```{r include=FALSE}
+## FIX: make_endpoint and dataset creation moved to the data-prep chunk above.
+## This chunk is retained as a placeholder to avoid slide numbering shifts.
+```
+
+# Time to Toxicity: CAP
+
+```{r}
+ggsurvplot(
+survfit(Surv(time,event)~1,data=cap),
+risk.table=T
+)
+```
+**Key takeaway:** The probability of remaining toxicity-free declines over cycles, with most events occurring early in treatment.
+
+
+# Time to Toxicity: OXA
+
+```{r}
+ggsurvplot(
+survfit(Surv(time,event)~1,data=oxa),
+risk.table=T
+)
+```
+**Key takeaway:** Toxicity risk is highest in early cycles. Estimates in later cycles are less reliable due to few patients remaining at risk.
+
+
+# Time to Toxicity: CAPOX
+
+```{r}
+ggsurvplot(
+survfit(Surv(time,event)~1,data=capox),
+risk.table=T
+)
+```
+**Key takeaway:** A similar pattern is observed, with most toxicities occurring early and increasing uncertainty in later cycles.
+
+# Kaplan-Meijer curves by hospital (capox as example)
+
+```{r}
+fit_hosp <- survfit(Surv(time, event) ~ hospital, data = capox)
+
+ggsurvplot(
+  fit_hosp,
+  data = capox,
+  censor = FALSE,
+  legend.title = "Hospital",
+  legend = "right",
+  ggtheme = theme_minimal(base_size = 16)
+)
+
+```
+
+- toxicity risk varies across hospitals
+- differences likely reflect patient mix and clinical practice
+
+# Why Use Cox Models?
+
+```{r}
+cox_cap <- coxph(
+Surv(time,event)~liverHU_manual+age+sex+BBMI+
+BSMOKER+starting_dose+strata(hospital),
+data=cap)
+
+cox_oxa <- coxph(
+Surv(time,event)~liverHU_manual+age+sex+BBMI+
+BSMOKER+starting_dose+strata(hospital),
+data=oxa)
+
+## FIX: added doseCAP + doseOXA to CAPOX model; both doses were present in
+## the older analysis files but had been accidentally omitted here.
+cox_capox <- coxph(
+Surv(time,event)~liverHU_manual+age+sex+BBMI+
+BSMOKER+doseCAP+doseOXA+strata(hospital),
+data=capox)
+```
+
+- Kaplan-Meijer curves are unadjusted and do not account for hospital differences
+
+- Cox models are stratified by hospital  
+- This allows each hospital to have its own baseline hazard  
+
+**Why this matters:**
+
+- Accounts for differences in patient populations, practices, and measurement  
+- Ensures estimated effects (e.g., liver HU) are not confounded by hospital differences  
+
+**Key takeaway:** Results reflect within-hospital comparisons, not differences between hospitals.
+
+
+# Association Between Liver HU and Toxicity
+
+```{r }
+hr_table <- bind_rows(
+  tidy(cox_cap, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Model="CAP"),
+  tidy(cox_oxa, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Model="OXA"),
+  tidy(cox_capox, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Model="CAPOX")
+)
+
+kable(hr_table, digits = 2) %>%
+  kableExtra::kable_styling(font_size = 7)
+```
+
+**Key takeaway:** Hazard ratios for liver HU are close to 1 across all endpoints, with no statistically significant associations observed.
+
+# CAP: No Meaningful Association with Liver HU
+
+```{r}
+forest_model(cox_cap)
+```
+
+**Key takeaway:** The estimated effect of liver HU is close to null with no statistically significant association.
+
+# OXA: Small Trend, Not Statistically significant
+
+```{r}
+forest_model(cox_oxa)
+```
+
+**Key takeaway:** A slight association is observed, but the effect size is small and not significant
+
+
+# CAPOX: No Consistent Association Observed
+
+```{r}
+forest_model(cox_capox)
+```
+
+**Key takeaway:** Estimates are close to null, with no clear evidence of an association.
+
+# Model Assumptions Hold
+
+- No evidence of violation of the proportional hazards assumption  
+- Hazard ratios appear stable over time  
+
+```{r}
+## FIX: Schoenfeld residual tests added for CAP and OXA; previously only
+## CAPOX was tested.
+ph_cap   <- cox.zph(cox_cap)
+ph_oxa   <- cox.zph(cox_oxa)
+ph_capox <- cox.zph(cox_capox)
+
+kable(as.data.frame(ph_cap$table),   caption = "PH test: CAP")
+kable(as.data.frame(ph_oxa$table),   caption = "PH test: OXA")
+kable(as.data.frame(ph_capox$table), caption = "PH test: CAPOX")
+```
+
+**Key takeaway:** The Cox model assumptions are satisfied, supporting the validity of the results.
+
+# Overall Interpretation
+
+- Liver radiodensity shows no consistent or clinically meaningful association with time to toxicity  
+- Effect sizes are small and not statistically significant across endpoints  
+- Other clinical variables (e.g., age, smoking, dose) show stronger associations  
+
+**Key takeaway:** Liver radiodensity does not appear to add meaningful predictive value beyond standard clinical variables even after accounting for hospital effects
+
+# Future study
+
+No clear association was observed when liver radiodensity was modeled continuously across its full range. A possible follow-up analysis would be to assess whether toxicity risk differs only at clinically meaningful thresholds or extreme radiodensity ranges.
