@@ -11,6 +11,7 @@ output:
     fig_caption: true
     toc: false
 header-includes:
+  - \usepackage{hyperref}
   - \usepackage{booktabs}
   - \usepackage{longtable}
   - \usepackage{float}
@@ -85,6 +86,10 @@ Colon Cancer Patients}}
 {\normalsize Statistical Consulting Project\\[0.3em]
 COLON Cohort Study\\[0.3em]
 Leiden University \& Wageningen University \& Research}
+
+\vspace{1.5cm}
+
+{\small Code and source materials: \url{https://github.com/bosnbos/liverfat-survival-analysis}}
 
 \vfill
 \end{titlepage}
@@ -451,6 +456,10 @@ The analysis is observational, and a causal interpretation of the within-hospita
 After accounting for hospital-level variation through stratification, liver radiodensity shows a small but consistent within-hospital association with time to dose-limiting toxicity for the oxaliplatin-containing regimens (OXA and CAPOX), reaching conventional significance for CAPOX. The same association is not detected in unstratified models, indicating that hospital-level variation is an important feature of the data rather than an analytic detail. Liver radiodensity remains an exploratory predictor for this outcome, and additional evidence would be needed before it could be considered for clinical use.
 
 \newpage
+
+# Code availability
+
+All analysis code and source files for this report are available at <https://github.com/bosnbos/liverfat-survival-analysis>. The COLON cohort dataset is not redistributed; see Methods for details on data access.
 
 # References
 
