@@ -93,7 +93,28 @@ Leiden University \& Wageningen University \& Research}
 
 \vfill
 \end{titlepage}
+
 \newpage
+\pagenumbering{roman}
+```
+
+# Abstract {-}
+
+**Background.** Capecitabine and oxaliplatin are standard chemotherapy agents for stage II/III colon cancer but cause clinically relevant dose-limiting toxicities. Liver radiodensity, measured on diagnostic computed tomography (CT) and expressed in Hounsfield Units (HU), reflects liver fat content and has been hypothesised as a determinant of treatment tolerance. In multicentre observational data, however, hospital-level differences in CT calibration and case-mix may distort this association.
+
+**Methods.** We analysed data from the prospective Dutch COLON cohort, in which patients with colon cancer were recruited from eleven hospitals. Time to first dose-limiting toxicity was modelled with Cox proportional hazards regression for three endpoints separately: capecitabine (CAP), oxaliplatin (OXA), and the combined CAPOX regimen. For each endpoint we compared an unstratified specification with a model stratified by hospital, adjusting in both for age, sex, body mass index, smoking status, and treatment-specific starting dose. The proportional hazards assumption was checked using Schoenfeld residual tests.
+
+**Results.** Mean liver radiodensity differed significantly between hospitals (ANOVA p < 0.001), consistent with systematic between-centre measurement differences. Unstratified Cox models showed no association between liver radiodensity and toxicity for any endpoint. After stratifying by hospital, a within-hospital association emerged for the oxaliplatin-containing regimens: HR = 1.10 per 10 HU (95% CI 1.00–1.21, p = 0.044) for CAPOX and HR = 1.09 (95% CI 1.00–1.20, p = 0.060) for OXA. No association was observed for CAP. The proportional hazards assumption held for all models.
+
+**Conclusion.** Hospital-level variation in measured liver radiodensity, likely reflecting differences in CT-scanner calibration, masks the within-hospital association in pooled analyses. Once hospital is accounted for through stratification, liver radiodensity shows a small but consistent within-hospital association with time to dose-limiting toxicity for oxaliplatin-based regimens. Liver radiodensity remains an exploratory predictor; further evidence is required before clinical application.
+
+**Keywords:** liver radiodensity; chemotherapy-induced toxicity; colon cancer; Cox proportional hazards regression; multicentre cohort study.
+
+```{=latex}
+\newpage
+\tableofcontents
+\newpage
+\pagenumbering{arabic}
 \setcounter{page}{1}
 ```
 
@@ -318,7 +339,7 @@ kable(tbl5, booktabs = TRUE,
 
 For the oxaliplatin-containing endpoints (OXA and CAPOX), the two specifications produce different results. The unstratified models show no association between liver radiodensity and toxicity, with hazard ratios close to 1.00 per 10 HU and p-values well above conventional thresholds. After stratifying by hospital, a within-hospital effect emerges: HR = 1.09 (95\% CI 1.00–1.20, p = 0.060) for OXA and HR = 1.10 (95\% CI 1.00–1.21, p = 0.044) for CAPOX. For CAP, the two specifications agree closely and neither indicates an association. The pattern suggests that, for OXA and CAPOX, ignoring hospital variation obscures the within-hospital association between liver radiodensity and toxicity. This is consistent with the hospital-level heterogeneity in liver radiodensity documented in Section \@ref(sec-hosp-hu), which likely reflects differences in CT-scanner calibration across centres.
 
-### Effect size at a per-SD scale
+### Effect Size at a Per-SD Scale
 
 The per-10-HU hazard ratios reported above represent a fixed, clinically transparent exposure contrast that is comparable across studies. As a complementary summary, Table \@ref(tab:table6-rescaled) reports the same stratified hazard ratios on a per-standard-deviation scale, where one unit corresponds to the typical between-patient contrast in liver radiodensity observed in this cohort.
 
@@ -351,7 +372,7 @@ kable(tbl6, booktabs = TRUE, row.names = FALSE,
 
 For CAPOX, a one-SD difference in liver radiodensity (approximately `r round(sd(capox$liverHU_manual, na.rm = TRUE), 1)` HU) is associated with a hazard ratio of `r sprintf("%.2f", exp(coef(cox_capox)["liverHU_manual"] * sd(capox$liverHU_manual, na.rm = TRUE)))` (95\% CI `r sprintf("%.2f–%.2f", exp((coef(cox_capox)["liverHU_manual"] - 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"])) * sd(capox$liverHU_manual, na.rm = TRUE)), exp((coef(cox_capox)["liverHU_manual"] + 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"])) * sd(capox$liverHU_manual, na.rm = TRUE)))`). For OXA the per-SD HR is `r sprintf("%.2f", exp(coef(cox_oxa)["liverHU_manual"] * sd(oxa$liverHU_manual, na.rm = TRUE)))`, borderline. The confidence intervals remain wide and the lower bound for CAPOX is close to 1, but the effect size at this scale is more readily interpretable than the per-1-HU framing might suggest.
 
-### Full adjusted model
+### Full Adjusted Model
 
 Table \@ref(tab:table7-full) presents the complete set of adjusted hazard ratios from the stratified models, including all covariates.
 
@@ -429,19 +450,19 @@ All p-values are well above the conventional threshold of 0.05, indicating no ev
 
 This study examined how hospital-level variation in a multicentre observational cohort influences the estimated association between liver radiodensity and time to chemotherapy-induced toxicity. The three sub-questions from the introduction are addressed in turn below.
 
-## Hospital differences in measurements and outcomes (SQ1)
+## Hospital Differences in Measurements and Outcomes (Sub-Question 1)
 
 Liver radiodensity differs significantly between hospitals (Table \@ref(tab:table4-anova), p `r format.pval(anova_p_hu, digits = 2, eps = 0.001)`), consistent with systematic between-centre differences in CT-scanner calibration, imaging protocols, or patient case-mix.
 
 Hospital differences in toxicity rates are more nuanced. Pearson's chi-square test (Table \@ref(tab:table2-chisq)) indicates a significant difference for OXA (p `r format.pval(chi_oxa$p.value, digits = 2, eps = 0.001)`), but not for CAP (p = `r round(chi_cap$p.value, 3)`) or CAPOX (p = `r round(chi_capox$p.value, 3)`). For these two endpoints, the observed range of hospital event rates is consistent with binomial sampling variation around a common rate. The descriptive observation that proportions span a wide range across centres is therefore not, on its own, sufficient evidence of underlying heterogeneity.
 
-## How accounting for hospitals changes the estimate (SQ2)
+## How Accounting for Hospitals Changes the Estimate (Sub-Question 2)
 
 The comparison of unstratified and stratified Cox models (Table \@ref(tab:table5-strat-vs-unstrat)) shows that hospital-level variation has a clear effect on the estimated association for the oxaliplatin-containing endpoints. In the unstratified models, the hazard ratios for OXA and CAPOX are close to 1.00 per 10 HU and not statistically significant. After stratification, a within-hospital effect is recovered: HR = 1.09 (95\% CI 1.00–1.20, p = 0.060) for OXA and HR = 1.10 (95\% CI 1.00–1.21, p = 0.044) for CAPOX. For CAP the two specifications agree closely, and neither suggests an association.
 
 The interpretation is that ignoring hospital variation does not just shift the estimate, it obscures the within-hospital association entirely for OXA and CAPOX. The likely mechanism is the systematic between-hospital difference in measured liver radiodensity (Section \@ref(sec-hosp-hu)): because measured HU is not directly comparable across centres, an unstratified model mixes within- and between-hospital contrasts in a way that washes out the within-hospital signal. Stratification by hospital removes this mixing.
 
-## What the within-hospital association implies (SQ3)
+## What the Within-Hospital Association Implies (Sub-Question 3)
 
 For CAPOX, a difference of 10 HU in liver radiodensity is associated with a hazard ratio of `r sprintf("%.2f", exp(10 * coef(cox_capox)["liverHU_manual"]))` (95\% CI `r sprintf("%.2f–%.2f", exp(10 * (coef(cox_capox)["liverHU_manual"] - 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"]))), exp(10 * (coef(cox_capox)["liverHU_manual"] + 1.96 * sqrt(vcov(cox_capox)["liverHU_manual","liverHU_manual"]))))`); on a per-SD scale (approximately `r round(sd(capox$liverHU_manual, na.rm = TRUE), 1)` HU) the same effect corresponds to a hazard ratio of `r sprintf("%.2f", exp(coef(cox_capox)["liverHU_manual"] * sd(capox$liverHU_manual, na.rm = TRUE)))`. For OXA the per-10-HU hazard ratio is `r sprintf("%.2f", exp(10 * coef(cox_oxa)["liverHU_manual"]))`, borderline. These are modest effect sizes, but they are no longer trivially close to 1 once the exposure scale reflects the variation actually observed in the cohort.
 
