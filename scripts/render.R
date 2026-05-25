@@ -13,10 +13,24 @@ if (!is.null(fm$knit)) {
   rmarkdown::render(input)
 }
 
-# Clean up xelatex/knitr build artefacts left in the working directory.
-stem <- tools::file_path_sans_ext(input)
-for (ext in c("log", "tex", "knit.md", "aux", "out", "toc", "nav", "snm", "vrb")) {
-  file.remove(Sys.glob(paste0(stem, ".", ext)))
+# Clean up xelatex/knitr build artefacts left alongside the input file.
+# Artefact names follow the YAML `output_file` stem (if set), otherwise the input stem.
+input_dir <- dirname(input)
+stems <- tools::file_path_sans_ext(basename(input))
+if (!is.null(fm$output_file)) {
+  stems <- c(stems, tools::file_path_sans_ext(basename(fm$output_file)))
 }
-unlink(paste0(stem, "_files"), recursive = TRUE)
-unlink(paste0(stem, "_cache"), recursive = TRUE)
+# Also pull output_file from a `knit:` hook string, e.g. output_file = "paper.pdf"
+if (!is.null(fm$knit)) {
+  m <- regmatches(fm$knit, regexec('output_file\\s*=\\s*["\']([^"\']+)["\']', fm$knit))[[1]]
+  if (length(m) >= 2) stems <- c(stems, tools::file_path_sans_ext(basename(m[2])))
+}
+stems <- unique(stems)
+for (stem in stems) {
+  path_stem <- file.path(input_dir, stem)
+  for (ext in c("log", "tex", "knit.md", "aux", "out", "toc", "nav", "snm", "vrb")) {
+    file.remove(Sys.glob(paste0(path_stem, ".", ext)))
+  }
+  unlink(paste0(path_stem, "_files"), recursive = TRUE)
+  unlink(paste0(path_stem, "_cache"), recursive = TRUE)
+}

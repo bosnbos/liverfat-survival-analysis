@@ -15,7 +15,7 @@
 # Output files (rendered reports kept in reports/, but ignore stray PDFs/HTML elsewhere)
 *.pdf
 *.html
-!reports/paper.pdf
+!reports/liverfat_paper.pdf
 !reports/slides.pdf
 output/
 
